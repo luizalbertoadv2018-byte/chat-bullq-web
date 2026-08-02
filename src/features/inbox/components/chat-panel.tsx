@@ -1143,7 +1143,7 @@ export function ChatPanel({
                         <div
                           className={`rounded-2xl px-4 py-2.5 ${
                             isOutbound
-                              ? 'rounded-br-md bg-primary text-primary-foreground'
+                              ? 'rounded-br-md bg-emerald-600 text-white'
                               : 'rounded-bl-md bg-white shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
                           }`}
                         >
