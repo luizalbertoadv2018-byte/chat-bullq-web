@@ -1,9 +1,19 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Paperclip, Mic, Trash2, Square, Loader2, X } from 'lucide-react';
+import { Send, Paperclip, Mic, Trash2, Square, Loader2, X, Smile } from 'lucide-react';
+import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { toast } from 'sonner';
 import { useAudioRecorder } from '../hooks/use-audio-recorder';
+
+// Emojis mais usados no atendimento (WhatsApp-style). Sem dependência externa.
+const EMOJIS = [
+  '😀','😁','😂','🤣','😊','😍','😘','😅','😉','🙂','🙃','😎',
+  '🤩','😇','🥰','😋','😛','😜','🤗','🤔','😐','😴','😢','😭',
+  '😤','😡','🥳','😱','😳','🙌','👀','🫡','👍','👎','👏','🙏',
+  '💪','👌','✌️','🤝','❤️','🧡','💛','💚','💙','💜','🔥','⭐',
+  '✅','❌','⚠️','🎉','🎊','💯','📌','📎','📄','📅','⏰','📞',
+];
 
 export interface MentionParticipant {
   phone: string;
@@ -262,6 +272,18 @@ export function ChatInput({
     el.style.height = Math.min(el.scrollHeight, 160) + 'px';
   };
 
+  const insertEmoji = (emoji: string) => {
+    const el = textareaRef.current;
+    const start = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? text.length;
+    setText((prev) => prev.slice(0, start) + emoji + prev.slice(end));
+    requestAnimationFrame(() => {
+      el?.focus();
+      const pos = start + emoji.length;
+      el?.setSelectionRange(pos, pos);
+    });
+  };
+
   const handleSendAudio = useCallback(async () => {
     if (!recorder.blob || !onSendAudio) return;
     setIsSendingAudio(true);
@@ -484,6 +506,32 @@ export function ChatInput({
             <Paperclip className="h-5 w-5" />
           )}
         </button>
+        <Popover className="relative">
+          <PopoverButton
+            type="button"
+            className="mb-1 rounded-lg p-2 text-zinc-400 outline-none hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
+            aria-label="Emojis"
+          >
+            <Smile className="h-5 w-5" />
+          </PopoverButton>
+          <PopoverPanel
+            anchor="top start"
+            className="z-30 w-72 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg outline-none dark:border-zinc-700 dark:bg-zinc-900 [--anchor-gap:0.5rem]"
+          >
+            <div className="grid grid-cols-8 gap-0.5">
+              {EMOJIS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => insertEmoji(e)}
+                  className="rounded-md p-1 text-lg leading-none hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </PopoverPanel>
+        </Popover>
         <textarea
           ref={textareaRef}
           value={text}
