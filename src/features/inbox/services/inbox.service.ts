@@ -46,6 +46,7 @@ export interface Conversation {
   contactId: string;
   assignedToId: string | null;
   status: string;
+  department?: string | null;
   protocol: string | null;
   subject?: string | null;
   isGroup: boolean;
@@ -379,10 +380,30 @@ export const inboxService = {
 
   async updateConversation(
     conversationId: string,
-    patch: { subject?: string | null },
+    patch: {
+      subject?: string | null;
+      status?: string;
+      department?: string | null;
+      assignedToId?: string | null;
+    },
   ): Promise<Conversation> {
     const { data } = await api.patch(`/conversations/${conversationId}`, patch);
     return data.data ?? data;
+  },
+
+  /** Etiquetas da conversa (painel Propriedades). */
+  async addTag(conversationId: string, tagId: string): Promise<void> {
+    await api.post(`/tags/conversation/${conversationId}/tag/${tagId}`);
+  },
+  async removeTag(conversationId: string, tagId: string): Promise<void> {
+    await api.delete(`/tags/conversation/${conversationId}/tag/${tagId}`);
+  },
+
+  /** Departamentos da org, para o seletor do painel Propriedades. */
+  async listDepartments(): Promise<Array<{ id: string; name: string }>> {
+    const { data } = await api.get('/departments');
+    const list = data?.data ?? data ?? [];
+    return Array.isArray(list) ? list.map((d: any) => ({ id: d.id, name: d.name })) : [];
   },
 
   async renameContact(contactId: string, name: string): Promise<void> {

@@ -8,6 +8,7 @@ import { ConversationList } from '@/features/inbox/components/conversation-list'
 import { ChatPanel } from '@/features/inbox/components/chat-panel';
 import { AgentRunsSidebar } from '@/features/inbox/components/agent-runs-sidebar';
 import { ProjectPanel } from '@/features/inbox/components/project-panel';
+import { ConversationPropertiesPanel } from '@/features/inbox/components/conversation-properties-panel';
 import { inboxService, type Conversation } from '@/features/inbox/services/inbox.service';
 
 const AGENT_LOGS_PREF_KEY = 'inbox.agentLogsOpen';
@@ -151,18 +152,23 @@ export default function InboxPage() {
             onToggleProject={toggleProjectPanel}
             projectOpen={projectPanelOpen}
           />
-          {agentLogsOpen && (
+          {agentLogsOpen ? (
             <AgentRunsSidebar
               key={`logs-${activeConversation.id}`}
               conversationId={activeConversation.id}
               onClose={toggleAgentLogs}
             />
-          )}
-          {projectPanelOpen && activeConversation.isGroup && (
+          ) : projectPanelOpen && activeConversation.isGroup ? (
             <ProjectPanel
               key={`project-${activeConversation.id}`}
               conversationId={activeConversation.id}
               onClose={toggleProjectPanel}
+            />
+          ) : (
+            <ConversationPropertiesPanel
+              key={`props-${activeConversation.id}`}
+              conversation={activeConversation}
+              onUpdate={handleConversationUpdate}
             />
           )}
         </>
