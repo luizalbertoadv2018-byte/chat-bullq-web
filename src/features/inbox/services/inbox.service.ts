@@ -17,6 +17,7 @@ export interface Contact {
   phone: string | null;
   avatarUrl: string | null;
   tags?: TagLink[];
+  metadata?: Record<string, any> | null;
 }
 
 export interface ChannelInfo {
@@ -408,6 +409,14 @@ export const inboxService = {
 
   async renameContact(contactId: string, name: string): Promise<void> {
     await api.patch(`/contacts/${contactId}`, { name });
+  },
+
+  /** Atualiza campos do contato (nome, origem em metadata, etc.). */
+  async updateContact(
+    contactId: string,
+    patch: { name?: string; metadata?: Record<string, any> },
+  ): Promise<void> {
+    await api.patch(`/contacts/${contactId}`, patch);
   },
 
   async archive(conversationId: string): Promise<Conversation> {

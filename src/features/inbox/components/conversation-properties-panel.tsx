@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Tag as TagIcon, Building2, MapPin, CircleDot, Plus, X, Check } from 'lucide-react';
+import { Tag as TagIcon, Building2, MapPin, CircleDot, Plus, X, Check, Pencil } from 'lucide-react';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { inboxService, type Conversation } from '../services/inbox.service';
 import { tagsService } from '@/features/settings/services/tags.service';
@@ -31,6 +31,19 @@ export function ConversationPropertiesPanel({
 }) {
   const orgId = useOrgId();
   const [busy, setBusy] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState(conversation.contact?.name ?? '');
+  const [origemValue, setOrigemValue] = useState<string>(
+    (conversation.contact?.metadata?.origem as string) ?? '',
+  );
+
+  // Sincroniza origem quando o metadata do contato chega (a conversa da lista
+  // não traz metadata; o refetch do getConversation traz). Só preenche se o
+  // campo ainda estiver vazio, pra não atropelar edição em andamento.
+  useEffect(() => {
+    const o = (conversation.contact?.metadata?.origem as string) ?? '';
+    setOrigemValue((prev) => (prev === '' ? o : prev));
+  }, [conversation.contact?.metadata?.origem]);
 
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags', orgId],
@@ -77,6 +90,18 @@ export function ConversationPropertiesPanel({
 
   const c = conversation.contact;
 
+  const saveName = () => {
+    setEditingName(false);
+    const v = nameValue.trim();
+    if (!v || v === (c?.name ?? '')) return;
+    run(() => inboxService.updateContact(c.id, { name: v }), 'Nome atualizado');
+  };
+  const saveOrigem = () => {
+    const v = origemValue.trim();
+    if (v === ((c?.metadata?.origem as string) ?? '')) return;
+    run(() => inboxService.updateContact(c.id, { metadata: { origem: v } }), 'Origem atualizada');
+  };
+
   return (
     <div className="hidden w-80 shrink-0 flex-col overflow-y-auto border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 xl:flex">
       {/* Cabeçalho do contato */}
@@ -89,9 +114,29 @@ export function ConversationPropertiesPanel({
             {initials(c?.name)}
           </div>
         )}
-        <p className="mt-3 text-center text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-          {c?.name || 'Sem nome'}
-        </p>
+        {editingName ? (
+          <input
+            autoFocus
+            value={nameValue}
+            onChange={(e) => setNameValue(e.target.value)}
+            onBlur={saveName}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') saveName();
+              if (e.key === 'Escape') { setEditingName(false); setNameValue(c?.name ?? ''); }
+            }}
+            className="mt-3 w-full rounded-md border border-primary/40 bg-white px-2 py-1 text-center text-sm font-semibold text-zinc-900 outline-none dark:bg-zinc-900 dark:text-zinc-100"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => { setNameValue(c?.name ?? ''); setEditingName(true); }}
+            title="Editar nome"
+            className="group mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-900 hover:text-primary dark:text-zinc-100"
+          >
+            {c?.name || 'Sem nome'}
+            <Pencil className="h-3 w-3 text-zinc-300 group-hover:text-primary" />
+          </button>
+        )}
         {c?.phone && <p className="text-xs text-zinc-500">{c.phone}</p>}
       </div>
 
@@ -190,9 +235,14 @@ export function ConversationPropertiesPanel({
 
         {/* Origem (canal) */}
         <Row icon={<MapPin className="h-4 w-4" />} label="Origem">
-          <span className="text-sm text-zinc-700 dark:text-zinc-300">
-            {conversation.channel?.name ?? <span className="text-zinc-400">—</span>}
-          </span>
+          <input
+            value={origemValue}
+            onChange={(e) => setOrigemValue(e.target.value)}
+            onBlur={saveOrigem}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            placeholder="Selecionar origem"
+            className="w-full rounded-md border border-transparent bg-transparent py-1 text-sm text-zinc-700 outline-none placeholder:text-zinc-400 hover:bg-zinc-50 focus:border-primary/40 dark:text-zinc-200 dark:hover:bg-zinc-900"
+          />
         </Row>
       </Section>
     </div>
