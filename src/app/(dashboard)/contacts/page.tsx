@@ -1,7 +1,6 @@
-import { redirect } from 'next/navigation';
+import { ContactsTable } from '@/features/contacts/components/contacts-table';
 
-// Página /contacts virou aba de Configurações. Mantemos um redirect aqui
-// pra preservar links antigos (bookmarks, deep-links, etc).
-export default function ContactsRedirect() {
-  redirect('/settings/contacts');
+// Página standalone de Contatos (estilo LiderHub) — fora de Configurações.
+export default function ContactsPage() {
+  return <ContactsTable fullWidth />;
 }
