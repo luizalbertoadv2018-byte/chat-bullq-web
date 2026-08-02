@@ -96,6 +96,23 @@ const statusColors: Record<string, string> = {
 
 type ListFilter = 'unread' | 'archived' | 'groups';
 
+// Abas do inbox no estilo LiderHub. Cada aba filtra por status/tipo em cima
+// dos filtros existentes: IA=BOT, Ativos=OPEN, Pendentes=PENDING, Grupos=grupo.
+type InboxTab = 'todas' | 'ia' | 'ativos' | 'pendentes' | 'grupos';
+
+const inboxTabs: {
+  value: InboxTab;
+  label: string;
+  status?: 'BOT' | 'OPEN' | 'PENDING';
+  dot: string;
+}[] = [
+  { value: 'todas', label: 'Todas', dot: 'bg-zinc-400' },
+  { value: 'ia', label: 'IA', status: 'BOT', dot: 'bg-blue-500' },
+  { value: 'ativos', label: 'Ativos', status: 'OPEN', dot: 'bg-emerald-500' },
+  { value: 'pendentes', label: 'Pendentes', status: 'PENDING', dot: 'bg-amber-500' },
+  { value: 'grupos', label: 'Grupos', dot: 'bg-violet-500' },
+];
+
 const filterOptions: { label: string; value: ListFilter; icon: React.ElementType; description: string }[] = [
   {
     label: 'Não lidas',
@@ -144,6 +161,8 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   // Default false = grupos NÃO aparecem no inbox geral (regra do JP).
   // Toggle pra true exibe junto com individuais.
   const [showGroups, setShowGroups] = useState(false);
+  // Aba ativa (estilo LiderHub). Não persiste em preferências — é navegação.
+  const [tab, setTab] = useState<InboxTab>('todas');
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [selectedProjectStatus, setSelectedProjectStatus] = useState('');
@@ -339,6 +358,15 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     queryFn: () => segmentsService.list(),
   });
 
+  // Contadores por status para as abas (IA/Ativos/Pendentes). Poll leve —
+  // realtime já invalida a lista; aqui é só o número em cima das abas.
+  const { data: statusCounts = {} } = useQuery({
+    queryKey: ['conversation-counts', orgId],
+    queryFn: () => inboxService.getStatusCounts(),
+    refetchInterval: 30000,
+    staleTime: 15000,
+  });
+
   const filteredTags = useMemo(() => {
     const q = tagSearch.trim().toLowerCase();
     if (!q) return tags;
@@ -370,7 +398,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   // Reset scroll when filters/search change
   useEffect(() => {
     scrollContainerRef.current?.scrollTo({ top: 0 });
-  }, [filterKey, debouncedSearch, selectedChannelId, selectedSegmentId, scope, showGroups, tagsKey]);
+  }, [filterKey, debouncedSearch, selectedChannelId, selectedSegmentId, scope, showGroups, tagsKey, tab]);
 
   const {
     data,
@@ -379,7 +407,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['conversations', orgId, viewId ?? null, filterKey, debouncedSearch, selectedChannelId, selectedSegmentId, scope, currentUserId],
+    queryKey: ['conversations', orgId, viewId ?? null, filterKey, debouncedSearch, selectedChannelId, selectedSegmentId, scope, currentUserId, tab],
     queryFn: ({ pageParam = 1 }) => {
       const params: Record<string, string> = { limit: '30', page: String(pageParam) };
       if (unreadOnly) params.unread = 'true';
@@ -417,6 +445,12 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedTagIds.length > 0) params.tagIds = selectedTagIds.join(',');
       if (scope === 'MINE' && currentUserId) params.assignedToId = currentUserId;
+      // Abas estilo LiderHub — layer de status/tipo sobre os filtros atuais.
+      // 'grupos' força groups=only (sobrepõe o groups=exclude padrão).
+      if (tab === 'ia') params.status = 'BOT';
+      else if (tab === 'ativos') params.status = 'OPEN';
+      else if (tab === 'pendentes') params.status = 'PENDING';
+      else if (tab === 'grupos') params.groups = 'only';
       if (viewId) {
         return inboxViewsService.getConversations(viewId, params);
       }
@@ -845,6 +879,43 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
 
   return (
     <div className="flex h-full w-80 flex-col border-r border-zinc-200/80 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+      {/* Abas estilo LiderHub (IA / Ativos / Pendentes / Grupos) */}
+      <div className="flex items-stretch gap-0.5 overflow-x-auto border-b border-zinc-200/80 px-1.5 pt-1.5 scrollbar-none dark:border-zinc-800">
+        {inboxTabs.map((t) => {
+          const isActive = tab === t.value;
+          const count = t.status ? statusCounts[t.status] : undefined;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              onClick={() => setTab(t.value)}
+              className={`relative flex shrink-0 items-center gap-1 rounded-t-md px-2 py-2 text-[12px] font-medium transition-colors ${
+                isActive
+                  ? 'text-primary'
+                  : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${t.dot}`} />
+              <span>{t.label}</span>
+              {typeof count === 'number' && count > 0 && (
+                <span
+                  className={`rounded-full px-1.5 py-px text-[10px] font-semibold leading-none ${
+                    isActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
+              {isActive && (
+                <span className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-primary" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Scope selector (All / Mine) */}
       <div className="px-3 pt-3">
         <Popover className="relative">

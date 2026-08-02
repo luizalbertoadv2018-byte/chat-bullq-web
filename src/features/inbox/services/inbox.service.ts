@@ -151,6 +151,23 @@ export const inboxService = {
     return data.data;
   },
 
+  /**
+   * Contadores por status para as abas do inbox (estilo LiderHub).
+   * Defensivo: aceita mapa { STATUS: n } ou array [{ status, count }].
+   */
+  async getStatusCounts(): Promise<Record<string, number>> {
+    const { data } = await api.get('/conversations/counts');
+    const raw = data?.data ?? data ?? {};
+    if (Array.isArray(raw)) {
+      return raw.reduce((acc: Record<string, number>, r: any) => {
+        const k = r?.status ?? r?.key;
+        if (k) acc[k] = Number(r?.count ?? r?._count ?? r?.total ?? 0);
+        return acc;
+      }, {});
+    }
+    return (raw ?? {}) as Record<string, number>;
+  },
+
   async getConversation(id: string): Promise<Conversation> {
     const { data } = await api.get(`/conversations/${id}`);
     return data.data;
