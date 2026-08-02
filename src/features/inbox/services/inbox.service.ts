@@ -400,6 +400,12 @@ export const inboxService = {
     await api.delete(`/tags/conversation/${conversationId}/tag/${tagId}`);
   },
 
+  /** Resumo inteligente da conversa gerado por IA. */
+  async summarizeConversation(conversationId: string): Promise<{ summary: string }> {
+    const { data } = await api.post(`/conversations/${conversationId}/summary`);
+    return data.data ?? data;
+  },
+
   /** Departamentos da org, para o seletor do painel Propriedades. */
   async listDepartments(): Promise<Array<{ id: string; name: string }>> {
     const { data } = await api.get('/departments');
