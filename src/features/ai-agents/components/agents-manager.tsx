@@ -12,10 +12,10 @@ import {
   Network,
   MoreHorizontal,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { aiAgentsService, type AiAgent } from '../services/ai-agents.service';
 import { useOrgId } from '@/hooks/use-org-query-key';
 import { CreateAgentDialog } from './create-agent-dialog';
-import { EditAgentDialog } from './edit-agent-dialog';
 import { AgentsList } from './agents-list';
 import { cn } from '@/lib/utils';
 
@@ -134,10 +134,10 @@ function Folder_({ label, count, children }: { label: string; count: number; chi
 export function AgentsManager() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [view, setView] = useState<'list' | 'org'>('list');
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [editing, setEditing] = useState<AiAgent | null>(null);
 
   const { data: agents = [], isLoading } = useQuery({
     queryKey: ['ai-agents', orgId],
@@ -249,7 +249,7 @@ export function AgentsManager() {
           folders.map(([dept, list]) => (
             <Folder_ key={dept} label={dept} count={list.length}>
               {list.map((a) => (
-                <AgentRow key={a.id} agent={a} onClick={() => setEditing(a)} />
+                <AgentRow key={a.id} agent={a} onClick={() => router.push(`/ai-agents/${a.id}`)} />
               ))}
             </Folder_>
           ))
@@ -257,7 +257,6 @@ export function AgentsManager() {
       </div>
 
       <CreateAgentDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
-      <EditAgentDialog agent={editing} onClose={() => setEditing(null)} onSaved={refresh} />
     </div>
   );
 }

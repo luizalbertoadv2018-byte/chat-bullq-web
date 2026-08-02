@@ -40,6 +40,8 @@ export function EditAgentDialog({
   const [operationalContextUpdatedAt, setOperationalContextUpdatedAt] = useState<
     string | null
   >(null);
+  const [triggerKeywords, setTriggerKeywords] = useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [showAddChannel, setShowAddChannel] = useState(false);
   const [newChannelId, setNewChannelId] = useState('');
@@ -70,9 +72,35 @@ export function EditAgentDialog({
     setSquad(agent.squad ?? '');
     setOperationalContext(agent.operationalContext ?? '');
     setOperationalContextUpdatedAt(agent.operationalContextUpdatedAt ?? null);
+    setTriggerKeywords(agent.triggerKeywords ?? []);
+    setKeywordInput('');
   }, [agent]);
 
   if (!agent) return null;
+
+  const addKeyword = (raw: string) => {
+    // Aceita "aposentadoria, auxílio-doença; bpc" de uma vez (vírgula/;/enter).
+    const parts = raw
+      .split(/[,;\n]/)
+      .map((k) => k.trim())
+      .filter(Boolean);
+    if (parts.length === 0) return;
+    setTriggerKeywords((prev) => {
+      const seen = new Set(prev.map((k) => k.toLowerCase()));
+      const next = [...prev];
+      for (const p of parts) {
+        if (!seen.has(p.toLowerCase())) {
+          next.push(p);
+          seen.add(p.toLowerCase());
+        }
+      }
+      return next;
+    });
+    setKeywordInput('');
+  };
+
+  const removeKeyword = (kw: string) =>
+    setTriggerKeywords((prev) => prev.filter((k) => k !== kw));
 
   const handleSave = async () => {
     setSaving(true);
@@ -87,6 +115,7 @@ export function EditAgentDialog({
         department: department || null,
         squad: squad.trim() || null,
         operationalContext: operationalContext.trim() || null,
+        triggerKeywords,
       });
       toast.success('Agente atualizado');
       onSaved();
@@ -210,6 +239,63 @@ export function EditAgentDialog({
               rows={10}
               className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
             />
+          </div>
+
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900/40 dark:bg-emerald-900/10">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
+              Palavras-chave de acionamento
+            </p>
+            <p className="mt-0.5 text-[11px] text-emerald-700/80 dark:text-emerald-200/70">
+              Se a mensagem do cliente contém uma destas palavras, a conversa vai
+              direto pra este agente — antes da IA classificar. Ideal pra
+              especialista por assunto (ex: um agente por tipo de benefício). Sem
+              acento e maiúscula importam; casa por palavra inteira.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {triggerKeywords.map((kw) => (
+                <span
+                  key={kw}
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+                >
+                  {kw}
+                  <button
+                    type="button"
+                    onClick={() => removeKeyword(kw)}
+                    className="rounded-full p-0.5 hover:bg-emerald-200 dark:hover:bg-emerald-800"
+                    aria-label={`Remover ${kw}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              {triggerKeywords.length === 0 && (
+                <span className="text-[11px] text-emerald-700/60 dark:text-emerald-300/60">
+                  Nenhuma palavra-chave. Este agente só recebe via classificador.
+                </span>
+              )}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="text"
+                value={keywordInput}
+                onChange={(e) => setKeywordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
+                    e.preventDefault();
+                    addKeyword(keywordInput);
+                  }
+                }}
+                placeholder="Ex: aposentadoria, auxílio-doença, bpc, loas"
+                className="flex-1 rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-sm dark:border-emerald-900/60 dark:bg-zinc-900 dark:text-zinc-100"
+              />
+              <button
+                type="button"
+                onClick={() => addKeyword(keywordInput)}
+                className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+              >
+                <Plus className="h-3 w-3" /> Adicionar
+              </button>
+            </div>
           </div>
 
           <div className="rounded-lg border-2 border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/40 dark:bg-amber-900/10">
@@ -450,7 +536,7 @@ function formatRelative(iso: string): string {
   return `há ${Math.floor(ageDays / 30)} meses`;
 }
 
-function AgentSkillsAndTools({ agentId }: { agentId: string }) {
+export function AgentSkillsAndTools({ agentId }: { agentId: string }) {
   const [skillIds, setSkillIds] = useState<string[]>([]);
   const [savingSkills, setSavingSkills] = useState(false);
   const queryClient = useQueryClient();
