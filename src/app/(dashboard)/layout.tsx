@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { SidebarLayout } from '@/components/ui/sidebar-layout';
 import { Navbar, NavbarSection, NavbarSpacer } from '@/components/ui/navbar';
 import { AppSidebar } from '@/components/layout/app-sidebar';
+import { TopBar } from '@/components/layout/top-bar';
 import { useAuthStore } from '@/stores/auth-store';
 import { authService } from '@/features/auth/services/auth.service';
 import { usePermissionsSync } from '@/features/settings/hooks/use-permissions-sync';
@@ -70,6 +71,7 @@ export default function DashboardLayout({
       }
     >
       <div className="flex h-full flex-col">
+        <TopBar />
         <ToolFailureBanner />
         <div className="flex-1 min-h-0">{children}</div>
       </div>
