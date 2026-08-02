@@ -1,12 +1,8 @@
-import { PagePlaceholder } from '@/components/layout/page-placeholder';
-import { Plug } from 'lucide-react';
+'use client';
 
+import { ChannelsList } from '@/features/channels/components/channels-list';
+
+// Conexões (top-level, estilo LiderHub) — mesma gestão de canais das Configurações.
 export default function ConnectionsPage() {
-  return (
-    <PagePlaceholder
-      title="Conexões"
-      subtitle="Gerencie suas conexões com canais de comunicação."
-      icon={<Plug className="size-6" />}
-    />
-  );
+  return <ChannelsList />;
 }
