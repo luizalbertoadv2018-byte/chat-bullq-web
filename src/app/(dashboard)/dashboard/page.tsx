@@ -12,11 +12,21 @@ import {
   Star, RotateCcw, ShieldCheck,
 } from 'lucide-react';
 import { dashboardService, type SparklinePoint } from '@/features/dashboard/services/dashboard.service';
+import { inboxService } from '@/features/inbox/services/inbox.service';
 import { useOrgId } from '@/hooks/use-org-query-key';
 import { Heatmap } from '@/features/dashboard/components/Heatmap';
 import { AgentList } from '@/features/dashboard/components/AgentList';
 
 const CHANNEL_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+
+// Funil de atendimento (estilo LiderHub) — usa os contadores por status.
+const FUNNEL_STAGES: { key: string; label: string; color: string }[] = [
+  { key: 'PENDING', label: 'Novas', color: '#f59e0b' },
+  { key: 'BOT', label: 'IA / Bot', color: '#3b82f6' },
+  { key: 'OPEN', label: 'Em atendimento', color: '#10b981' },
+  { key: 'WAITING', label: 'Aguardando', color: '#8b5cf6' },
+  { key: 'CLOSED', label: 'Resolvidas', color: '#71717a' },
+];
 
 type TrendDirection = 'higher-is-better' | 'lower-is-better';
 
@@ -189,12 +199,49 @@ export default function DashboardPage() {
     queryKey: ['dashboard-reopens', orgId],
     queryFn: () => dashboardService.getReopens(),
   });
+  const { data: statusCounts } = useQuery({
+    queryKey: ['dashboard-status-counts', orgId],
+    queryFn: () => inboxService.getStatusCounts(),
+    refetchInterval: 30000,
+  });
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto w-full max-w-6xl p-6">
       <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Dashboard</h1>
       <p className="mt-1 text-sm text-zinc-500">Últimos 30 dias</p>
+
+      {/* FUNIL DE ATENDIMENTO (estilo LiderHub) */}
+      {statusCounts && (
+        <div className="mt-6">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+            Funil de atendimento
+          </h2>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {FUNNEL_STAGES.map((s) => (
+              <div
+                key={s.key}
+                className="relative overflow-hidden rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+              >
+                <span
+                  aria-hidden
+                  className="absolute left-0 top-0 h-full w-1"
+                  style={{ backgroundColor: s.color }}
+                />
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} />
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                    {s.label}
+                  </span>
+                </div>
+                <p className="mt-2 text-2xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {statusCounts[s.key] ?? 0}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* HERO KPIs */}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
