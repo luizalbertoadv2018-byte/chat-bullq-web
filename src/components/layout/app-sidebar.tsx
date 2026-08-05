@@ -164,10 +164,10 @@ export function AppSidebar() {
       <SidebarHeader>
         <Dropdown>
           <DropdownButton className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2.5 text-left text-sm/6 font-semibold text-zinc-950 hover:bg-zinc-950/5 dark:text-white dark:hover:bg-white/5">
-            <Avatar
-              initials={activeOrg?.name?.slice(0, 2).toUpperCase()}
-              className="size-6 bg-primary text-[10px] text-primary-foreground"
-              square
+            <img
+              src="/brand/logo-mark.png"
+              alt={activeOrg?.name ?? 'Alberto Martins Advocacia'}
+              className="size-6 shrink-0 object-contain dark:invert"
             />
             <span className="min-w-0 flex-1 truncate">
               {activeOrg?.name ?? 'Organização'}
