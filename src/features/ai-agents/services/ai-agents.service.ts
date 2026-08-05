@@ -55,6 +55,8 @@ export interface AiAgent {
   kind: AgentKind;
   category: string | null;
   capabilities: string[];
+  /** Palavras-chave que roteiam a conversa direto pra este agent (antes do classifier LLM). */
+  triggerKeywords: string[];
   modelId: string;
   modelParams: Record<string, unknown> | null;
   systemPrompt: string;
@@ -80,6 +82,7 @@ export interface CreateAgentInput {
   kind?: AgentKind;
   category?: string;
   capabilities?: string[];
+  triggerKeywords?: string[];
   modelId: string;
   systemPrompt: string;
   temperature?: number;

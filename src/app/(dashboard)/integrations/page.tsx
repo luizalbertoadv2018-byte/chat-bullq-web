@@ -10,7 +10,7 @@ const INTEGRATIONS = [
   { name: 'Google Drive', desc: 'Ler e anexar documentos do cliente direto do Drive.', icon: HardDrive, connected: false },
   { name: 'ClickUp', desc: 'Criar e acompanhar tarefas do escritório a partir do atendimento.', icon: ListTodo, connected: false },
   { name: 'n8n', desc: 'Disparar automações e webhooks externos.', icon: Workflow, connected: false },
-  { name: 'ZapSign', desc: 'Gerar e enviar contratos para assinatura digital.', icon: FileSignature, connected: false },
+  { name: 'ZapSign', desc: 'Enviar procurações e contratos de honorários para assinatura digital direto pelo agente.', icon: FileSignature, connected: true },
 ];
 
 export default function IntegrationsPage() {

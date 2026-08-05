@@ -22,6 +22,12 @@ import {
   Layers,
   FolderKanban,
   MessageSquarePlus,
+  Reply,
+  Target,
+  Clock,
+  Eye,
+  MapPin,
+  Calendar,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -169,6 +175,16 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   const [mineProjects, setMineProjects] = useState(false);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [tagSearch, setTagSearch] = useState('');
+  // Filtros avançados (estilo LiderHub). Session-local — não persistem em
+  // preferências (são de navegação, como as abas). Modo Sombra é só UI:
+  // não marca a conversa como lida ao abrir.
+  const [unansweredOnly, setUnansweredOnly] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [inactiveOnly, setInactiveOnly] = useState(false);
+  const [shadowMode, setShadowMode] = useState(false);
+  const [selectedOrigem, setSelectedOrigem] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   // showGroups conta como filtro ativo SÓ quando ON (default OFF é o
   // comportamento padrão, não merece badge). Tags contam 1 por tag.
   const activeFilterCount =
@@ -177,7 +193,13 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     (showGroups ? 1 : 0) +
     (selectedProjectStatus ? 1 : 0) +
     (mineProjects ? 1 : 0) +
-    selectedTagIds.length;
+    selectedTagIds.length +
+    (unansweredOnly ? 1 : 0) +
+    (focusMode ? 1 : 0) +
+    (inactiveOnly ? 1 : 0) +
+    (shadowMode ? 1 : 0) +
+    (selectedOrigem.trim() ? 1 : 0) +
+    (dateFrom || dateTo ? 1 : 0);
   const [scope, setScope] = useState<ScopeFilter>('ALL');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -258,6 +280,13 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     setSelectedTagIds([]);
     setSelectedProjectStatus('');
     setMineProjects(false);
+    setUnansweredOnly(false);
+    setFocusMode(false);
+    setInactiveOnly(false);
+    setShadowMode(false);
+    setSelectedOrigem('');
+    setDateFrom('');
+    setDateTo('');
     updatePrefs({
       unreadOnly: false,
       archivedOnly: false,
@@ -328,7 +357,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     () => [...selectedTagIds].sort().join(','),
     [selectedTagIds],
   );
-  const filterKey = `${unreadOnly ? 'u' : ''}|${archivedOnly ? 'a' : ''}|${showGroups ? 'g' : ''}|ps:${selectedProjectStatus}|mp:${mineProjects ? '1' : ''}|t:${tagsKey}`;
+  const filterKey = `${unreadOnly ? 'u' : ''}|${archivedOnly ? 'a' : ''}|${showGroups ? 'g' : ''}|ps:${selectedProjectStatus}|mp:${mineProjects ? '1' : ''}|t:${tagsKey}|na:${unansweredOnly ? '1' : ''}|fo:${focusMode ? '1' : ''}|in:${inactiveOnly ? '1' : ''}|or:${selectedOrigem.trim()}|df:${dateFrom}|dt:${dateTo}`;
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
@@ -445,12 +474,23 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedTagIds.length > 0) params.tagIds = selectedTagIds.join(',');
       if (scope === 'MINE' && currentUserId) params.assignedToId = currentUserId;
+      // Filtros avançados (estilo LiderHub).
+      if (unansweredOnly) params.unanswered = 'true';
+      if (focusMode) params.focus = 'true';
+      if (inactiveOnly) params.inactive = 'true';
+      if (selectedOrigem.trim()) params.origem = selectedOrigem.trim();
+      if (dateFrom) params.dateFrom = new Date(`${dateFrom}T00:00:00`).toISOString();
+      if (dateTo) params.dateTo = new Date(`${dateTo}T23:59:59`).toISOString();
       // Abas estilo LiderHub — layer de status/tipo sobre os filtros atuais.
       // 'grupos' força groups=only (sobrepõe o groups=exclude padrão).
-      if (tab === 'ia') params.status = 'BOT';
-      else if (tab === 'ativos') params.status = 'OPEN';
-      else if (tab === 'pendentes') params.status = 'PENDING';
-      else if (tab === 'grupos') params.groups = 'only';
+      // Modo Foco define seu próprio conjunto de status (PENDING + minhas
+      // OPEN); a aba de status cede pra não gerar interseção vazia.
+      if (!focusMode) {
+        if (tab === 'ia') params.status = 'BOT';
+        else if (tab === 'ativos') params.status = 'OPEN';
+        else if (tab === 'pendentes') params.status = 'PENDING';
+      }
+      if (tab === 'grupos') params.groups = 'only';
       if (viewId) {
         return inboxViewsService.getConversations(viewId, params);
       }
@@ -527,12 +567,14 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
       onSelect(conv);
       setLastClickedIndex(index);
 
+      // Modo Sombra: abre a conversa SEM marcar como lida (espiar sem tirar
+      // do "não lidas"). Pula todo o fluxo de markAsRead.
       // Mark as read on click. Optimistic: zero the local counter
       // immediately so the badge disappears before the API roundtrip;
       // backend then emits conversation:read via socket which becomes
       // a no-op for this user (counter is already 0) but syncs other
       // tabs/devices logged into the same account.
-      if ((conv.unreadCount ?? 0) > 0) {
+      if (!shadowMode && (conv.unreadCount ?? 0) > 0) {
         const lastMsgId = conv.messages?.[0]?.id;
 
         // When the current list filters by "unread only" — either via the
@@ -598,6 +640,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
       orgId,
       viewId,
       unreadOnly,
+      shadowMode,
     ],
   );
 
@@ -1279,6 +1322,98 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
                   </div>
                 </>
               )}
+              {/* ─── Origem ─── */}
+              <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
+              <p className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                Origem
+              </p>
+              <div className="px-2.5 pb-1.5">
+                <div className="relative">
+                  <MapPin className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-400" />
+                  <input
+                    type="text"
+                    placeholder="Filtrar por origem..."
+                    value={selectedOrigem}
+                    onChange={(e) => setSelectedOrigem(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape' && selectedOrigem) {
+                        e.stopPropagation();
+                        setSelectedOrigem('');
+                      }
+                    }}
+                    className="w-full rounded-md border border-zinc-200 bg-white py-1.5 pl-7 pr-2 text-[12px] text-zinc-700 outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                  />
+                </div>
+              </div>
+
+              {/* ─── Período ─── */}
+              <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5">
+                <Calendar className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                  Período
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 px-2.5 pb-1.5">
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-[12px] text-zinc-700 outline-none focus:border-primary dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                />
+                <span className="text-[11px] text-zinc-400">até</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-[12px] text-zinc-700 outline-none focus:border-primary dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                />
+              </div>
+
+              {/* ─── Avançado ─── */}
+              <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
+              <p className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                Avançado
+              </p>
+              {(
+                [
+                  { key: 'unanswered', label: 'Somente sem resposta', desc: 'Último contato foi do cliente.', icon: Reply, active: unansweredOnly, toggle: () => setUnansweredOnly((v) => !v) },
+                  { key: 'focus', label: 'Modo Foco', desc: 'Todas pendentes + suas conversas ativas.', icon: Target, active: focusMode, toggle: () => setFocusMode((v) => !v) },
+                  { key: 'inactive', label: 'Conversas com inatividade', desc: 'Paradas há mais de 24h.', icon: Clock, active: inactiveOnly, toggle: () => setInactiveOnly((v) => !v) },
+                  { key: 'shadow', label: 'Modo Sombra', desc: 'Abrir sem marcar como lida.', icon: Eye, active: shadowMode, toggle: () => setShadowMode((v) => !v) },
+                ] as const
+              ).map((f) => {
+                const Icon = f.icon;
+                return (
+                  <button
+                    key={f.key}
+                    onClick={f.toggle}
+                    className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
+                      f.active
+                        ? 'bg-primary/[0.06] font-medium text-primary dark:bg-primary/10'
+                        : 'text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
+                    }`}
+                  >
+                    <div
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                        f.active
+                          ? 'border-primary bg-primary text-white'
+                          : 'border-zinc-300 dark:border-zinc-600'
+                      }`}
+                    >
+                      {f.active && <Check className="h-2.5 w-2.5" />}
+                    </div>
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="flex-1 leading-tight">
+                      <span className="block">{f.label}</span>
+                      <span className="block text-[10px] font-normal text-zinc-400 dark:text-zinc-500">
+                        {f.desc}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+
               {activeFilterCount > 0 && (
                 <>
                   <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
@@ -1291,6 +1426,10 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
                   </button>
                 </>
               )}
+              <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
+              <p className="px-2.5 py-2 text-center text-[12px] font-medium text-zinc-500 dark:text-zinc-400">
+                {isLoading ? 'Buscando…' : `Mostrar ${totalCount} resultado${totalCount === 1 ? '' : 's'}`}
+              </p>
             </div>
           </PopoverPanel>
         </Popover>

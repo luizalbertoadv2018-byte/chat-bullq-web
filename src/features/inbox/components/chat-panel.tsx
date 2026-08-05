@@ -5,6 +5,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, CheckCheck, Clock, AlertCircle, ExternalLink, Reply, Trash2, X, Ban, Forward } from 'lucide-react';
 import { toast } from 'sonner';
 import { inboxService, type Conversation, type Message } from '../services/inbox.service';
+import { scheduledMessagesService } from '@/features/scheduled-messages/services/scheduled-messages.service';
+import { quickRepliesService, type QuickReply } from '@/features/quick-replies/services/quick-replies.service';
 import { ChatInput } from './chat-input';
 import { ConversationHeader } from './conversation-header';
 import { StoryReplyCard } from './story-reply-card';
@@ -473,6 +475,15 @@ export function ChatPanel({
     retry: false,
   });
 
+  // Respostas prontas da org (atalho "/" no composer). Compartilhado entre
+  // conversas — cache longo, refetch preguiçoso.
+  const { data: quickReplies = [] } = useQuery({
+    queryKey: ['quick-replies'],
+    queryFn: () => quickRepliesService.list(),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
   // telefone -> nome, pra trocar `@5545...` pelo nome na hora de exibir.
   const mentionNames = useMemo(
     () => new Map(participants.map((p) => [p.phone, p.name])),
@@ -817,6 +828,41 @@ export function ChatPanel({
     try {
       const sent = await inboxService.sendMediaMessage(conversation.id, file, caption);
       if (sent?.id) mergeMessage(sent);
+    } catch (err) {
+      queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
+      throw err;
+    }
+  };
+
+  /**
+   * Envia uma resposta pronta que tem anexos: primeiro o texto (se houver)
+   * como mensagem própria, depois cada mídia (já hospedada — reusa a URL, sem
+   * re-upload). Chamado pelo composer quando a resposta escolhida tem mídia;
+   * respostas só-texto são inseridas direto no input pelo próprio ChatInput.
+   */
+  const handleSendQuickReply = async (qr: QuickReply) => {
+    try {
+      if (qr.content?.trim()) {
+        const sent = await inboxService.sendMessage({
+          conversationId: conversation.id,
+          type: 'TEXT',
+          content: { text: qr.content },
+        });
+        if (sent?.id) mergeMessage(sent);
+      }
+      for (const att of qr.attachments ?? []) {
+        const sent = await inboxService.sendMessage({
+          conversationId: conversation.id,
+          type: att.type,
+          content: {
+            mediaUrl: att.url,
+            ...(att.mimeType ? { mimeType: att.mimeType } : {}),
+            ...(att.fileName ? { fileName: att.fileName } : {}),
+            ...(att.size ? { fileSize: att.size } : {}),
+          },
+        });
+        if (sent?.id) mergeMessage(sent);
+      }
     } catch (err) {
       queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
       throw err;
@@ -1256,8 +1302,19 @@ export function ChatPanel({
         onSend={handleSend}
         onSendAudio={handleSendAudio}
         onSendFile={handleSendFile}
+        onSchedule={async (text, sendAtIso) => {
+          await scheduledMessagesService.schedule({
+            conversationId: conversation.id,
+            type: 'TEXT',
+            content: { text },
+            sendAt: sendAtIso,
+          });
+          queryClient.invalidateQueries({ queryKey: ['scheduled-messages'] });
+        }}
         disabled={conversation.status === 'CLOSED'}
         participants={participants}
+        quickReplies={quickReplies}
+        onSendQuickReply={handleSendQuickReply}
       />
       <ForwardMessageDialog
         message={forwardingMessage}

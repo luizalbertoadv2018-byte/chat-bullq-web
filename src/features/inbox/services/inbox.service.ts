@@ -350,11 +350,6 @@ export const inboxService = {
     return data.data ?? data;
   },
 
-  async getStatusCounts(): Promise<Record<string, number>> {
-    const { data } = await api.get('/conversations/counts');
-    return data.data;
-  },
-
   async bulkClose(ids: string[]): Promise<void> {
     await Promise.allSettled(ids.map((id) => api.post(`/conversations/${id}/close`)));
   },

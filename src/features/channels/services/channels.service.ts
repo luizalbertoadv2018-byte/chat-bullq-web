@@ -1,6 +1,18 @@
 import { api } from '@/lib/api';
 
-export type ChannelType = 'WHATSAPP_OFFICIAL' | 'WHATSAPP_ZAPPFY' | 'INSTAGRAM' | 'GMAIL';
+export type ChannelType =
+  | 'WHATSAPP_OFFICIAL'
+  | 'WHATSAPP_ZAPPFY'
+  | 'WHATSAPP_EVOLUTION'
+  | 'INSTAGRAM'
+  | 'GMAIL';
+
+export interface EvolutionConnectResult {
+  qrBase64: string | null;
+  pairingCode: string | null;
+  state: string;
+  webhookUrl?: string;
+}
 
 export type ChannelVisibility = 'ORG' | 'PRIVATE';
 
@@ -124,5 +136,21 @@ export const channelsService = {
   async getTemplates(id: string): Promise<WhatsAppTemplate[]> {
     const { data } = await api.get<{ data: WhatsAppTemplate[] }>(`/channels/${id}/templates`);
     return data.data;
+  },
+
+  /** Evolution API: cria/pareia a instância e devolve o QR Code. */
+  async connectEvolution(id: string): Promise<EvolutionConnectResult> {
+    const { data } = await api.post<{ data: EvolutionConnectResult }>(
+      `/channels/${id}/evolution/connect`,
+    );
+    return data.data ?? (data as any);
+  },
+
+  /** Evolution API: estado da conexão (open | connecting | close). */
+  async evolutionStatus(id: string): Promise<{ state: string }> {
+    const { data } = await api.get<{ data: { state: string } }>(
+      `/channels/${id}/evolution/status`,
+    );
+    return data.data ?? (data as any);
   },
 };

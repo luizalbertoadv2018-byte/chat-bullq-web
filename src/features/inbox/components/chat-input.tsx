@@ -1,10 +1,17 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Paperclip, Mic, Trash2, Square, Loader2, X, Smile } from 'lucide-react';
+import { Send, Paperclip, Mic, Trash2, Square, Loader2, X, Smile, Clock, CalendarClock, Zap, Image as ImageIcon, Video, FileText, Music } from 'lucide-react';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { toast } from 'sonner';
 import { useAudioRecorder } from '../hooks/use-audio-recorder';
+import type { QuickReply } from '@/features/quick-replies/services/quick-replies.service';
+
+/** Formata um Date para o value de um <input type="datetime-local"> (hora local). */
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 // Emojis mais usados no atendimento (WhatsApp-style). Sem dependência externa.
 const EMOJIS = [
@@ -26,9 +33,23 @@ interface ChatInputProps {
   onSend: (text: string, mentions?: string[] | 'all') => Promise<void>;
   onSendAudio?: (blob: Blob) => Promise<void>;
   onSendFile?: (file: File, caption?: string) => Promise<void>;
+  /** Agenda o texto para envio futuro. Ausente = esconde o botão de relógio. */
+  onSchedule?: (text: string, sendAtIso: string) => Promise<void>;
   disabled?: boolean;
   /** Participantes do grupo. Vazio/ausente desliga o autocomplete de @. */
   participants?: MentionParticipant[];
+  /** Respostas prontas da org. Vazio/ausente desliga o atalho "/". */
+  quickReplies?: QuickReply[];
+  /** Envia uma resposta pronta que tem anexos (texto vira legenda + mídias). */
+  onSendQuickReply?: (qr: QuickReply) => Promise<void>;
+}
+
+function QuickReplyIcon({ type }: { type: QuickReply['attachments'][number]['type'] }) {
+  const cls = 'h-3.5 w-3.5 shrink-0';
+  if (type === 'IMAGE') return <ImageIcon className={cls} />;
+  if (type === 'VIDEO') return <Video className={cls} />;
+  if (type === 'AUDIO') return <Music className={cls} />;
+  return <FileText className={cls} />;
 }
 
 /** Entrada especial do menu: marca todo mundo do grupo. */
@@ -56,10 +77,15 @@ export function ChatInput({
   onSend,
   onSendAudio,
   onSendFile,
+  onSchedule,
   disabled,
   participants = [],
+  quickReplies = [],
+  onSendQuickReply,
 }: ChatInputProps) {
   const [text, setText] = useState('');
+  const [scheduleAt, setScheduleAt] = useState('');
+  const [isScheduling, setIsScheduling] = useState(false);
   // Menções escolhidas nesta mensagem: rótulo exibido -> telefone (ou 'all').
   // No envio, cada rótulo vira `@<telefone>` no texto, que é o que o WhatsApp
   // precisa pra desenhar a menção destacada.
@@ -68,6 +94,11 @@ export function ChatInput({
   const [mentionAt, setMentionAt] = useState<number | null>(null);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionIndex, setMentionIndex] = useState(0);
+  // Atalho de respostas prontas: índice onde começa o `/` digitado; null = fechado.
+  const [slashAt, setSlashAt] = useState<number | null>(null);
+  const [slashQuery, setSlashQuery] = useState('');
+  const [slashIndex, setSlashIndex] = useState(0);
+  const [sendingQuickReply, setSendingQuickReply] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isSendingAudio, setIsSendingAudio] = useState(false);
   const [isSendingFile, setIsSendingFile] = useState(false);
@@ -140,6 +171,32 @@ export function ChatInput({
     }
   }, [pastedImage, text, isSending, isSendingFile, onSend, onSendFile, picked]);
 
+  const handleSchedule = useCallback(
+    async (close: () => void) => {
+      const trimmed = text.trim();
+      if (!trimmed || !onSchedule || !scheduleAt) return;
+      const when = new Date(scheduleAt);
+      if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() + 60_000) {
+        toast.error('Escolha uma data/hora pelo menos 1 minuto no futuro.');
+        return;
+      }
+      setIsScheduling(true);
+      try {
+        await onSchedule(trimmed, when.toISOString());
+        setText('');
+        setPicked(new Map());
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
+        close();
+        toast.success('Mensagem agendada');
+      } catch (err: any) {
+        toast.error(err?.response?.data?.message || 'Erro ao agendar');
+      } finally {
+        setIsScheduling(false);
+      }
+    },
+    [text, onSchedule, scheduleAt],
+  );
+
   // Lista filtrada do menu de menção. "todos" só aparece sem busca ou quando
   // o texto digitado casa com ele.
   const mentionMatches = (() => {
@@ -206,6 +263,90 @@ export function ChatInput({
     [mentionAt, text, closeMention],
   );
 
+  // Lista filtrada do menu de respostas prontas (atalho "/").
+  const slashMatches = (() => {
+    if (slashAt === null || !quickReplies.length) return [];
+    const q = slashQuery.toLowerCase();
+    return quickReplies
+      .filter(
+        (r) =>
+          !q ||
+          r.shortcut.toLowerCase().includes(q) ||
+          r.title.toLowerCase().includes(q),
+      )
+      .slice(0, 8);
+  })();
+
+  const closeSlash = useCallback(() => {
+    setSlashAt(null);
+    setSlashQuery('');
+    setSlashIndex(0);
+  }, []);
+
+  /**
+   * Reavalia se o cursor está logo após um `/atalho`. O `/` só abre o menu
+   * quando está no começo do texto ou depois de espaço (não dentro de URL).
+   */
+  const syncSlashState = useCallback(
+    (value: string, caret: number) => {
+      if (!quickReplies.length) return;
+      const upto = value.slice(0, caret);
+      const at = upto.lastIndexOf('/');
+      if (at === -1) return closeSlash();
+      const before = at > 0 ? upto[at - 1] : ' ';
+      const query = upto.slice(at + 1);
+      if (!/\s/.test(before) || /\s/.test(query)) return closeSlash();
+      setSlashAt(at);
+      setSlashQuery(query);
+      setSlashIndex(0);
+    },
+    [quickReplies.length, closeSlash],
+  );
+
+  /**
+   * Aplica a resposta pronta escolhida. Sem anexos → insere o texto no
+   * lugar do `/atalho` (atendente edita/envia). Com anexos → dispara o envio
+   * imediato (texto + mídias) e limpa o `/atalho` do input.
+   */
+  const applyQuickReply = useCallback(
+    async (qr: QuickReply) => {
+      if (slashAt === null) return;
+      const el = textareaRef.current;
+      const caret = el?.selectionStart ?? text.length;
+      const hasAttachments = (qr.attachments?.length ?? 0) > 0;
+
+      if (hasAttachments && onSendQuickReply) {
+        // Remove o "/atalho" do texto antes de disparar o envio.
+        const cleaned = `${text.slice(0, slashAt)}${text.slice(caret)}`;
+        setText(cleaned);
+        closeSlash();
+        setSendingQuickReply(true);
+        try {
+          await onSendQuickReply(qr);
+        } catch (err: any) {
+          toast.error(
+            err?.response?.data?.message || err?.message || 'Erro ao enviar resposta pronta',
+          );
+        } finally {
+          setSendingQuickReply(false);
+        }
+        return;
+      }
+
+      // Só texto: substitui o "/atalho" pelo conteúdo.
+      const next = `${text.slice(0, slashAt)}${qr.content}${text.slice(caret)}`;
+      setText(next);
+      closeSlash();
+      const pos = slashAt + qr.content.length;
+      requestAnimationFrame(() => {
+        el?.focus();
+        el?.setSelectionRange(pos, pos);
+        el?.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    },
+    [slashAt, text, onSendQuickReply, closeSlash],
+  );
+
   const handlePaste = useCallback(
     (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
       const items = e.clipboardData?.items;
@@ -234,6 +375,29 @@ export function ChatInput({
   const discardImage = () => setPastedImage(null); // useEffect revoga a URL
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Com o menu de respostas prontas aberto, as setas/Enter/Tab pertencem a ele.
+    if (slashMatches.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSlashIndex((i) => (i + 1) % slashMatches.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSlashIndex((i) => (i - 1 + slashMatches.length) % slashMatches.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        applyQuickReply(slashMatches[slashIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeSlash();
+        return;
+      }
+    }
     // Com o menu de menção aberto, as setas/Enter/Tab pertencem a ele.
     if (mentionMatches.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -464,6 +628,50 @@ export function ChatInput({
           ))}
         </div>
       )}
+      {slashMatches.length > 0 && (
+        <div className="absolute bottom-full left-3 z-20 mb-1 max-h-72 w-96 overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+            <Zap className="h-3 w-3" /> Respostas prontas
+          </div>
+          {slashMatches.map((qr, i) => (
+            <button
+              key={qr.id}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applyQuickReply(qr);
+              }}
+              onMouseEnter={() => setSlashIndex(i)}
+              className={`flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left ${
+                i === slashIndex
+                  ? 'bg-zinc-100 dark:bg-zinc-800'
+                  : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/60'
+              }`}
+            >
+              <div className="flex w-full items-center gap-2">
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-xs font-medium text-primary">
+                  /{qr.shortcut}
+                </span>
+                <span className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                  {qr.title}
+                </span>
+                {!!qr.attachments?.length && (
+                  <span className="ml-auto flex items-center gap-1 text-zinc-400">
+                    {qr.attachments.slice(0, 3).map((att, k) => (
+                      <QuickReplyIcon key={k} type={att.type} />
+                    ))}
+                  </span>
+                )}
+              </div>
+              {qr.content && (
+                <span className="line-clamp-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  {qr.content}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
       {pastedImage && previewUrl && (
         <div className="mb-2 flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-700 dark:bg-zinc-900">
           <img
@@ -538,16 +746,24 @@ export function ChatInput({
           onChange={(e) => {
             setText(e.target.value);
             syncMentionState(e.target.value, e.target.selectionStart ?? 0);
+            syncSlashState(e.target.value, e.target.selectionStart ?? 0);
           }}
           onKeyDown={handleKeyDown}
           onInput={handleInput}
-          onClick={(e) =>
+          onClick={(e) => {
             syncMentionState(
               (e.target as HTMLTextAreaElement).value,
               (e.target as HTMLTextAreaElement).selectionStart ?? 0,
-            )
-          }
-          onBlur={() => setTimeout(closeMention, 120)}
+            );
+            syncSlashState(
+              (e.target as HTMLTextAreaElement).value,
+              (e.target as HTMLTextAreaElement).selectionStart ?? 0,
+            );
+          }}
+          onBlur={() => {
+            setTimeout(closeMention, 120);
+            setTimeout(closeSlash, 120);
+          }}
           onPaste={handlePaste}
           placeholder={pastedImage ? 'Adicione uma legenda...' : 'Digite uma mensagem...'}
           rows={1}
@@ -563,18 +779,68 @@ export function ChatInput({
             <Mic className="h-5 w-5" />
           </button>
         ) : (
-          <button
-            onClick={handleSubmit}
-            disabled={(!text.trim() && !pastedImage) || isSending || isSendingFile}
-            className="mb-1 rounded-lg bg-primary p-2.5 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-            aria-label="Enviar mensagem"
-          >
-            {isSending || isSendingFile ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Send className="h-5 w-5" />
+          <>
+            {onSchedule && !pastedImage && !!text.trim() && (
+              <Popover className="relative">
+                <PopoverButton
+                  type="button"
+                  onClick={() =>
+                    setScheduleAt(toLocalInput(new Date(Date.now() + 3600_000)))
+                  }
+                  className="mb-1 rounded-lg p-2.5 text-zinc-400 outline-none transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
+                  aria-label="Agendar envio"
+                  title="Agendar envio"
+                >
+                  <Clock className="h-5 w-5" />
+                </PopoverButton>
+                <PopoverPanel
+                  anchor="top end"
+                  className="z-30 w-72 rounded-xl border border-zinc-200 bg-white p-3 shadow-lg outline-none dark:border-zinc-700 dark:bg-zinc-900 [--anchor-gap:0.5rem]"
+                >
+                  {({ close }) => (
+                    <div>
+                      <p className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-zinc-700 dark:text-zinc-200">
+                        <CalendarClock className="h-4 w-4 text-primary" />
+                        Agendar envio
+                      </p>
+                      <input
+                        type="datetime-local"
+                        value={scheduleAt}
+                        min={toLocalInput(new Date(Date.now() + 60_000))}
+                        onChange={(e) => setScheduleAt(e.target.value)}
+                        className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-[13px] text-zinc-700 outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSchedule(close)}
+                        disabled={isScheduling || !scheduleAt}
+                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        {isScheduling ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Clock className="h-4 w-4" />
+                        )}
+                        Agendar
+                      </button>
+                    </div>
+                  )}
+                </PopoverPanel>
+              </Popover>
             )}
-          </button>
+            <button
+              onClick={handleSubmit}
+              disabled={(!text.trim() && !pastedImage) || isSending || isSendingFile}
+              className="mb-1 rounded-lg bg-primary p-2.5 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              aria-label="Enviar mensagem"
+            >
+              {isSending || isSendingFile ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+            </button>
+          </>
         )}
       </div>
       {recorder.error && (
