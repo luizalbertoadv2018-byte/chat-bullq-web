@@ -79,7 +79,7 @@ export function ConversationPropertiesPanel({
     run(() => inboxService.updateConversation(conversation.id, { status: value }), 'Status atualizado');
   const setDepartment = (value: string) =>
     run(
-      () => inboxService.updateConversation(conversation.id, { department: value || null }),
+      () => inboxService.updateConversation(conversation.id, { departmentId: value || null }),
       'Departamento atualizado',
     );
   const toggleTag = (tagId: string, isOn: boolean) =>
@@ -260,13 +260,13 @@ export function ConversationPropertiesPanel({
         <Row icon={<Building2 className="h-4 w-4" />} label="Departamento">
           <select
             disabled={busy}
-            value={conversation.department ?? ''}
+            value={conversation.departmentId ?? ''}
             onChange={(e) => setDepartment(e.target.value)}
             className="w-full cursor-pointer rounded-md border border-transparent bg-transparent py-1 text-sm text-zinc-700 outline-none hover:bg-zinc-50 focus:border-primary/40 dark:text-zinc-200 dark:hover:bg-zinc-900"
           >
             <option value="">Selecionar departamento</option>
             {departments.map((d) => (
-              <option key={d.id} value={d.name}>{d.name}</option>
+              <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
         </Row>

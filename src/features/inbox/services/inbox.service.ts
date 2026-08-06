@@ -49,7 +49,10 @@ export interface Conversation {
   contactId: string;
   assignedToId: string | null;
   status: string;
-  department?: string | null;
+  /** FK do departamento (scalar) — usar isto no seletor de departamento. */
+  departmentId?: string | null;
+  /** Relação do departamento (vem no detalhe/findById). */
+  department?: { id: string; name: string } | null;
   protocol: string | null;
   subject?: string | null;
   isGroup: boolean;
@@ -381,7 +384,7 @@ export const inboxService = {
     patch: {
       subject?: string | null;
       status?: string;
-      department?: string | null;
+      departmentId?: string | null;
       assignedToId?: string | null;
     },
   ): Promise<Conversation> {
@@ -432,6 +435,18 @@ export const inboxService = {
   ): Promise<{ messages: Message[]; pagination: any }> {
     const { data } = await api.get('/messages', {
       params: { conversationId, page, limit, mediaOnly: 'true' },
+    });
+    return data.data;
+  },
+
+  /** Mensagens de texto que contêm links — o painel extrai as URLs. */
+  async getConversationLinks(
+    conversationId: string,
+    page = 1,
+    limit = 100,
+  ): Promise<{ messages: Message[]; pagination: any }> {
+    const { data } = await api.get('/messages', {
+      params: { conversationId, page, limit, linksOnly: 'true' },
     });
     return data.data;
   },
