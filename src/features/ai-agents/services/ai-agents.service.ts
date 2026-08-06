@@ -153,6 +153,24 @@ export const aiAgentsService = {
     await api.delete(`/ai-agents/${id}`);
   },
 
+  /**
+   * Testa o agente: roda o prompt contra o histórico de teste e devolve a
+   * resposta. `systemPrompt` opcional sobrepõe o salvo (testa edições não
+   * salvas). Teste só de prompt — não executa ferramentas nem roteamento.
+   */
+  async test(
+    id: string,
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    systemPrompt?: string,
+  ): Promise<{ reply: string; usage?: { inputTokens: number; outputTokens: number } }> {
+    const { data } = await api.post(
+      `/ai-agents/${id}/test`,
+      { messages, systemPrompt },
+      { timeout: 60000 },
+    );
+    return data.data ?? data;
+  },
+
   async assignChannel(
     id: string,
     payload: { channelId: string; mode?: AgentMode; trigger?: AgentTrigger },

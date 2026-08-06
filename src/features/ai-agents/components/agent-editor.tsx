@@ -12,7 +12,6 @@ import {
   Bot,
   MessageSquare,
   Send,
-  Paperclip,
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -70,6 +69,28 @@ export function AgentEditor({ agentId }: { agentId: string }) {
   const [triggerKeywords, setTriggerKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Chat de teste (testa o prompt ATUAL do editor, mesmo não salvo).
+  const [testMsgs, setTestMsgs] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const [testInput, setTestInput] = useState('');
+  const [testLoading, setTestLoading] = useState(false);
+
+  const sendTest = async () => {
+    const text = testInput.trim();
+    if (!text || testLoading) return;
+    const next = [...testMsgs, { role: 'user' as const, content: text }];
+    setTestMsgs(next);
+    setTestInput('');
+    setTestLoading(true);
+    try {
+      const res = await aiAgentsService.test(agentId, next, systemPrompt);
+      setTestMsgs((prev) => [...prev, { role: 'assistant', content: res.reply }]);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Erro ao testar o agente');
+    } finally {
+      setTestLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!agent) return;
@@ -417,24 +438,78 @@ export function AgentEditor({ agentId }: { agentId: string }) {
 
         {/* Direita — chat de teste */}
         <aside className="hidden w-80 shrink-0 flex-col border-l border-zinc-200 xl:flex dark:border-zinc-800">
-          <div className="flex items-center gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <MessageSquare className="h-4 w-4 text-zinc-400" />
-            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Testar {agent.name}</span>
+          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-zinc-400" />
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Testar {agent.name}</span>
+            </div>
+            {testMsgs.length > 0 && (
+              <button
+                onClick={() => setTestMsgs([])}
+                className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
+                title="Limpar conversa"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
-          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-            <MessageSquare className="h-8 w-8 text-zinc-200 dark:text-zinc-700" />
-            <p className="mt-3 text-sm font-medium text-zinc-600 dark:text-zinc-300">Inicie uma conversa de teste</p>
-            <p className="mt-1 text-xs text-zinc-400">Veja como {agent.name} responderia. (Em breve conectado ao motor de IA.)</p>
+
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+            {testMsgs.length === 0 && !testLoading ? (
+              <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+                <MessageSquare className="h-8 w-8 text-zinc-200 dark:text-zinc-700" />
+                <p className="mt-3 text-sm font-medium text-zinc-600 dark:text-zinc-300">Inicie uma conversa de teste</p>
+                <p className="mt-1 text-xs text-zinc-400">
+                  Veja como {agent.name} responderia. Usa o prompt do editor (mesmo sem salvar). Não executa ferramentas nem transfere entre agentes.
+                </p>
+              </div>
+            ) : (
+              <>
+                {testMsgs.map((m, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      'max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm',
+                      m.role === 'user'
+                        ? 'self-end bg-primary text-primary-foreground'
+                        : 'self-start bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100',
+                    )}
+                  >
+                    {m.content}
+                  </div>
+                ))}
+                {testLoading && (
+                  <div className="self-start rounded-lg bg-zinc-100 px-3 py-2 dark:bg-zinc-800">
+                    <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+                  </div>
+                )}
+              </>
+            )}
           </div>
+
           <div className="border-t border-zinc-200 p-3 dark:border-zinc-800">
             <div className="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
-              <Paperclip className="h-4 w-4 text-zinc-400" />
               <input
-                disabled
+                value={testInput}
+                onChange={(e) => setTestInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendTest();
+                  }
+                }}
+                disabled={testLoading}
                 placeholder="Escreva uma mensagem de teste..."
                 className="flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
               />
-              <Send className="h-4 w-4 text-zinc-300" />
+              <button
+                onClick={sendTest}
+                disabled={testLoading || !testInput.trim()}
+                className="text-zinc-400 hover:text-primary disabled:opacity-40"
+                title="Enviar"
+              >
+                <Send className="h-4 w-4" />
+              </button>
             </div>
           </div>
         </aside>
