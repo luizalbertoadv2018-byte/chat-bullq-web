@@ -16,6 +16,8 @@ export interface Contact {
   name: string | null;
   phone: string | null;
   avatarUrl: string | null;
+  /** Contato bloqueado — inbound é descartado (sem conversa/mensagem/IA). */
+  blocked?: boolean;
   tags?: TagLink[];
   metadata?: Record<string, any> | null;
 }
@@ -410,6 +412,28 @@ export const inboxService = {
 
   async renameContact(contactId: string, name: string): Promise<void> {
     await api.patch(`/contacts/${contactId}`, { name });
+  },
+
+  /** Bloqueia o contato: novas mensagens dele são descartadas (sem IA). */
+  async blockContact(contactId: string): Promise<void> {
+    await api.patch(`/contacts/${contactId}/block`);
+  },
+
+  /** Desbloqueia o contato: mensagens voltam a fluir normalmente. */
+  async unblockContact(contactId: string): Promise<void> {
+    await api.patch(`/contacts/${contactId}/unblock`);
+  },
+
+  /** Galeria "Arquivos": só mídias (imagem/vídeo/áudio/documento/sticker). */
+  async getConversationMedia(
+    conversationId: string,
+    page = 1,
+    limit = 60,
+  ): Promise<{ messages: Message[]; pagination: any }> {
+    const { data } = await api.get('/messages', {
+      params: { conversationId, page, limit, mediaOnly: 'true' },
+    });
+    return data.data;
   },
 
   /** Atualiza campos do contato (nome, origem em metadata, etc.). */

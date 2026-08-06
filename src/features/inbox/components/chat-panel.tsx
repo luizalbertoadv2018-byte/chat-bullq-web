@@ -33,6 +33,9 @@ interface ChatPanelProps {
   /** Forwarded to ConversationHeader for the Project panel toggle (groups). */
   onToggleProject?: () => void;
   projectOpen?: boolean;
+  /** Forwarded to ConversationHeader for the files/media gallery toggle. */
+  onToggleFiles?: () => void;
+  filesOpen?: boolean;
 }
 
 const statusIcons: Record<string, React.ElementType> = {
@@ -435,6 +438,8 @@ export function ChatPanel({
   agentLogsOpen,
   onToggleProject,
   projectOpen,
+  onToggleFiles,
+  filesOpen,
 }: ChatPanelProps) {
   const queryClient = useQueryClient();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -924,6 +929,8 @@ export function ChatPanel({
         agentLogsOpen={agentLogsOpen}
         onToggleProject={onToggleProject}
         projectOpen={projectOpen}
+        onToggleFiles={onToggleFiles}
+        filesOpen={filesOpen}
       />
 
       <PendingActionsList conversationId={conversation.id} />

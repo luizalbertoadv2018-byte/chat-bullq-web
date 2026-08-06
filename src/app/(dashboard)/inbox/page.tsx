@@ -9,6 +9,7 @@ import { ChatPanel } from '@/features/inbox/components/chat-panel';
 import { AgentRunsSidebar } from '@/features/inbox/components/agent-runs-sidebar';
 import { ProjectPanel } from '@/features/inbox/components/project-panel';
 import { ConversationPropertiesPanel } from '@/features/inbox/components/conversation-properties-panel';
+import { ConversationFilesPanel } from '@/features/inbox/components/conversation-files-panel';
 import { inboxService, type Conversation } from '@/features/inbox/services/inbox.service';
 
 const AGENT_LOGS_PREF_KEY = 'inbox.agentLogsOpen';
@@ -38,7 +39,10 @@ export default function InboxPage() {
       // SSR / privacy mode — fine, defaults to closed.
     }
   }, []);
-  // Logs e Projeto são mutuamente exclusivos (largura): abrir um fecha o outro.
+  // Painel de arquivos é transiente (não persiste entre sessões).
+  const [filesPanelOpen, setFilesPanelOpen] = useState(false);
+  // Logs, Projeto e Arquivos são mutuamente exclusivos (largura): abrir um
+  // fecha os outros.
   const toggleAgentLogs = useCallback(() => {
     setAgentLogsOpen((prev) => {
       const next = !prev;
@@ -49,6 +53,7 @@ export default function InboxPage() {
       }
       if (next) {
         setProjectPanelOpen(false);
+        setFilesPanelOpen(false);
         try {
           localStorage.setItem(PROJECT_PANEL_PREF_KEY, '0');
         } catch {
@@ -68,8 +73,25 @@ export default function InboxPage() {
       }
       if (next) {
         setAgentLogsOpen(false);
+        setFilesPanelOpen(false);
         try {
           localStorage.setItem(AGENT_LOGS_PREF_KEY, '0');
+        } catch {
+          // ignore
+        }
+      }
+      return next;
+    });
+  }, []);
+  const toggleFilesPanel = useCallback(() => {
+    setFilesPanelOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setAgentLogsOpen(false);
+        setProjectPanelOpen(false);
+        try {
+          localStorage.setItem(AGENT_LOGS_PREF_KEY, '0');
+          localStorage.setItem(PROJECT_PANEL_PREF_KEY, '0');
         } catch {
           // ignore
         }
@@ -151,6 +173,8 @@ export default function InboxPage() {
             agentLogsOpen={agentLogsOpen}
             onToggleProject={toggleProjectPanel}
             projectOpen={projectPanelOpen}
+            onToggleFiles={toggleFilesPanel}
+            filesOpen={filesPanelOpen}
           />
           {agentLogsOpen ? (
             <AgentRunsSidebar
@@ -163,6 +187,12 @@ export default function InboxPage() {
               key={`project-${activeConversation.id}`}
               conversationId={activeConversation.id}
               onClose={toggleProjectPanel}
+            />
+          ) : filesPanelOpen ? (
+            <ConversationFilesPanel
+              key={`files-${activeConversation.id}`}
+              conversationId={activeConversation.id}
+              onClose={toggleFilesPanel}
             />
           ) : (
             <ConversationPropertiesPanel

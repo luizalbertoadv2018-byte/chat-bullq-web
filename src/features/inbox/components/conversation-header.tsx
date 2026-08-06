@@ -14,6 +14,9 @@ import {
   Send,
   Activity,
   FolderKanban,
+  Paperclip,
+  Ban,
+  ShieldCheck,
 } from 'lucide-react';
 import { ConversationAiToggle } from './conversation-ai-toggle';
 import { AssignmentPopover } from './assignment-popover';
@@ -30,6 +33,9 @@ interface ConversationHeaderProps {
   /** When provided + conversation is a group, renders the Project panel toggle. */
   onToggleProject?: () => void;
   projectOpen?: boolean;
+  /** When provided, renders a toggle for the conversation files/media gallery. */
+  onToggleFiles?: () => void;
+  filesOpen?: boolean;
 }
 
 function ChannelBadge({ type, name }: { type: string; name: string }) {
@@ -106,7 +112,10 @@ export function ConversationHeader({
   agentLogsOpen,
   onToggleProject,
   projectOpen,
+  onToggleFiles,
+  filesOpen,
 }: ConversationHeaderProps) {
+  const isBlocked = !!conversation.contact.blocked;
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -153,8 +162,16 @@ export function ConversationHeader({
           avatarUrl={conversation.contact.avatarUrl}
         />
         <div className="flex flex-col">
-          <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-            {conversation.contact.name || conversation.contact.phone || 'Desconhecido'}
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              {conversation.contact.name || conversation.contact.phone || 'Desconhecido'}
+            </div>
+            {isBlocked && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                <Ban className="h-3 w-3" />
+                Bloqueado
+              </span>
+            )}
           </div>
           {conversation.contact.phone && conversation.contact.name && (
             <div className="text-xs text-zinc-500">{conversation.contact.phone}</div>
@@ -203,6 +220,19 @@ export function ConversationHeader({
         >
           <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
         </button>
+        {onToggleFiles && (
+          <button
+            onClick={onToggleFiles}
+            title={filesOpen ? 'Fechar arquivos' : 'Arquivos da conversa'}
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+              filesOpen
+                ? 'bg-primary/10 text-primary dark:bg-primary/15'
+                : 'text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300'
+            }`}
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+          </button>
+        )}
         {onToggleProject && conversation.isGroup && (
           <button
             onClick={onToggleProject}
@@ -236,6 +266,42 @@ export function ConversationHeader({
           />
         )}
         <PipelinePopover conversation={conversation} onChanged={onUpdate} />
+        {isBlocked ? (
+          <button
+            onClick={() =>
+              handleAction(
+                () => inboxService.unblockContact(conversation.contact.id),
+                'Contato desbloqueado — mensagens voltam a fluir',
+              )
+            }
+            disabled={isLoading}
+            title="Desbloquear contato"
+            className="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-emerald-50 hover:text-emerald-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Desbloquear
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              if (
+                !window.confirm(
+                  `Bloquear ${conversation.contact.name || conversation.contact.phone || 'este contato'}? As próximas mensagens dele serão descartadas (sem conversa, sem IA) até você desbloquear.`,
+                )
+              )
+                return;
+              handleAction(
+                () => inboxService.blockContact(conversation.contact.id),
+                'Contato bloqueado — novas mensagens serão descartadas',
+              );
+            }}
+            disabled={isLoading}
+            title="Bloquear contato"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+          >
+            <Ban className="h-3.5 w-3.5" />
+          </button>
+        )}
         {conversation.status !== 'CLOSED' && (
           <button
             onClick={() =>
