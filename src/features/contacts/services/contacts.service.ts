@@ -7,6 +7,8 @@ export interface Contact {
   email: string | null;
   avatarUrl: string | null;
   notes: string | null;
+  /** Contato bloqueado — mensagens novas dele são descartadas (sem IA). */
+  blocked?: boolean;
   metadata: Record<string, any>;
   channels: { id: string; channelId: string; externalId: string; channel: { id: string; type: string; name: string } }[];
   tags: { tag: { id: string; name: string; color: string } }[];
@@ -36,5 +38,13 @@ export const contactsService = {
 
   async remove(id: string): Promise<void> {
     await api.delete(`/contacts/${id}`);
+  },
+
+  async block(id: string): Promise<void> {
+    await api.patch(`/contacts/${id}/block`);
+  },
+
+  async unblock(id: string): Promise<void> {
+    await api.patch(`/contacts/${id}/unblock`);
   },
 };

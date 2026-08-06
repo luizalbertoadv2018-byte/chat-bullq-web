@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Search, Users, MessageSquare } from 'lucide-react';
-import { contactsService } from '@/features/contacts/services/contacts.service';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { Search, Users, MessageSquare, Ban, ShieldCheck, Loader2 } from 'lucide-react';
+import { contactsService, type Contact } from '@/features/contacts/services/contacts.service';
 import { useOrgId } from '@/hooks/use-org-query-key';
 import { ZappfyIcon, MetaIcon, InstagramIcon, GmailIcon } from '@/components/ui/icons';
 
@@ -22,12 +23,36 @@ const channelIcons: Record<string, React.ElementType> = {
 export function ContactsTable({ fullWidth = false }: { fullWidth?: boolean }) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const orgId = useOrgId();
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['contacts', orgId, search, page],
     queryFn: () => contactsService.list({ search, page: String(page), limit: '20' }),
   });
+
+  const toggleBlock = async (contact: Contact) => {
+    const willBlock = !contact.blocked;
+    if (
+      willBlock &&
+      !window.confirm(
+        `Bloquear ${contact.name || contact.phone || 'este contato'}? As mensagens novas dele serão descartadas (sem conversa, sem IA) até você desbloquear.`,
+      )
+    )
+      return;
+    setBusyId(contact.id);
+    try {
+      if (willBlock) await contactsService.block(contact.id);
+      else await contactsService.unblock(contact.id);
+      await queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      toast.success(willBlock ? 'Contato bloqueado' : 'Contato desbloqueado');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Erro ao alterar bloqueio');
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const contacts = data?.contacts || [];
   const pagination = data?.pagination;
@@ -65,11 +90,12 @@ export function ContactsTable({ fullWidth = false }: { fullWidth?: boolean }) {
         <table className="w-full table-fixed shrink-0">
           <thead>
             <tr className="border-b border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/50">
-              <th className="w-[30%] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Contato</th>
-              <th className="w-[20%] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Telefone</th>
-              <th className="w-[20%] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Canais</th>
-              <th className="w-[20%] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Tags</th>
+              <th className="w-[28%] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Contato</th>
+              <th className="w-[17%] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Telefone</th>
+              <th className="w-[17%] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Canais</th>
+              <th className="w-[18%] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Tags</th>
               <th className="w-[10%] px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-zinc-500">Conversas</th>
+              <th className="w-[10%] px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-zinc-500">Ações</th>
             </tr>
           </thead>
         </table>
@@ -78,10 +104,11 @@ export function ContactsTable({ fullWidth = false }: { fullWidth?: boolean }) {
         <div className="flex-1 overflow-y-auto min-h-0">
           <table className="w-full table-fixed">
             <colgroup>
-              <col className="w-[30%]" />
-              <col className="w-[20%]" />
-              <col className="w-[20%]" />
-              <col className="w-[20%]" />
+              <col className="w-[28%]" />
+              <col className="w-[17%]" />
+              <col className="w-[17%]" />
+              <col className="w-[18%]" />
+              <col className="w-[10%]" />
               <col className="w-[10%]" />
             </colgroup>
             <tbody>
@@ -93,11 +120,12 @@ export function ContactsTable({ fullWidth = false }: { fullWidth?: boolean }) {
                     <td className="px-4 py-3"><div className="h-4 w-16 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800" /></td>
                     <td className="px-4 py-3"><div className="h-4 w-20 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800" /></td>
                     <td className="px-4 py-3"><div className="h-4 w-8 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800" /></td>
+                    <td className="px-4 py-3"><div className="mx-auto h-4 w-6 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800" /></td>
                   </tr>
                 ))
               ) : contacts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-16 text-center">
+                  <td colSpan={6} className="px-4 py-16 text-center">
                     <Users className="mx-auto h-10 w-10 text-zinc-200 dark:text-zinc-700" />
                     <p className="mt-3 text-sm text-zinc-500">Nenhum contato encontrado</p>
                   </td>
@@ -111,9 +139,17 @@ export function ContactsTable({ fullWidth = false }: { fullWidth?: boolean }) {
                           {(contact.name || '??').slice(0, 2).toUpperCase()}
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                            {contact.name || 'Sem nome'}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                              {contact.name || 'Sem nome'}
+                            </p>
+                            {contact.blocked && (
+                              <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                <Ban className="h-2.5 w-2.5" />
+                                Bloqueado
+                              </span>
+                            )}
+                          </div>
                           {contact.email && (
                             <p className="truncate text-[11px] text-zinc-400">{contact.email}</p>
                           )}
@@ -151,6 +187,28 @@ export function ContactsTable({ fullWidth = false }: { fullWidth?: boolean }) {
                     </td>
                     <td className="px-4 py-3 text-center text-sm text-zinc-600 dark:text-zinc-400">
                       {contact._count?.conversations || 0}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-center">
+                        <button
+                          onClick={() => toggleBlock(contact)}
+                          disabled={busyId === contact.id}
+                          title={contact.blocked ? 'Desbloquear contato' : 'Bloquear contato'}
+                          className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-50 ${
+                            contact.blocked
+                              ? 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                              : 'text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400'
+                          }`}
+                        >
+                          {busyId === contact.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : contact.blocked ? (
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                          ) : (
+                            <Ban className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

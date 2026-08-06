@@ -4,7 +4,9 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 ENV NODE_ENV=development
 COPY package.json yarn.lock ./
-RUN corepack enable && yarn install --frozen-lockfile --production=false
+# --network-timeout alto: a VPS às vezes tem rede instável com o registry npm
+# (ESOCKETTIMEDOUT). Dá mais fôlego pro download antes de abortar o build.
+RUN corepack enable && yarn install --frozen-lockfile --production=false --network-timeout 600000
 
 FROM node:20-alpine AS builder
 WORKDIR /app
