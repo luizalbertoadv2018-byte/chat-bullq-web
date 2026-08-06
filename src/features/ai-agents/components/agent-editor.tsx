@@ -149,7 +149,9 @@ export function AgentEditor({ agentId }: { agentId: string }) {
   };
 
   const promptLen = systemPrompt.length;
-  const promptMax = 7000;
+  // Contador visual (não bloqueia salvar). Teto folgado — prompts de funil
+  // completo (recepção→viabilidade→proposta→contrato) passam de 7000 fácil.
+  const promptMax = 20000;
 
   if (isLoading) {
     return (
