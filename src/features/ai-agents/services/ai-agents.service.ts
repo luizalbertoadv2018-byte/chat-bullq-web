@@ -385,19 +385,19 @@ export interface AgentStats {
   handoffs: { sent: number; received: number };
 }
 
-export const DEFAULT_AGENT_MODEL = 'sakana/fugu-ultra-20260615';
-export const SIMPLE_TASK_MODEL = 'sakana/fugu';
+export const DEFAULT_AGENT_MODEL = 'gpt-4o';
+export const SIMPLE_TASK_MODEL = 'gpt-4o-mini';
 
 export const CURATED_MODELS = [
   {
     id: DEFAULT_AGENT_MODEL,
-    label: 'Sakana Fugu Ultra',
-    badge: 'Conversas · máxima qualidade',
+    label: 'GPT-4o',
+    badge: 'Conversas · qualidade',
     recommendedFor: 'worker',
   },
   {
     id: SIMPLE_TASK_MODEL,
-    label: 'Sakana Fugu',
+    label: 'GPT-4o mini',
     badge: 'Tarefas simples · mais barato',
     recommendedFor: 'orchestrator',
   },
