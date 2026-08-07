@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, CheckCheck, Clock, AlertCircle, ExternalLink, Reply, Trash2, X, Ban, Forward } from 'lucide-react';
+import { Check, CheckCheck, Clock, AlertCircle, ExternalLink, Reply, Trash2, X, Ban, Forward, CheckSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { inboxService, type Conversation, type Message } from '../services/inbox.service';
 import { scheduledMessagesService } from '@/features/scheduled-messages/services/scheduled-messages.service';
@@ -792,11 +792,40 @@ export function ChatPanel({
   }, []);
   const cancelReply = useCallback(() => setReplyingTo(null), []);
 
-  // Forward state — quando setado, abre o modal de escolher destino(s).
-  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  // Forward state — quando setado (1+ mensagens), abre o modal de destino(s).
+  const [forwardMessages, setForwardMessages] = useState<Message[] | null>(null);
   const startForward = useCallback((message: Message) => {
-    setForwardingMessage(message);
+    setForwardMessages([message]);
   }, []);
+
+  // Modo de seleção múltipla (pra encaminhar várias de uma vez, tipo WhatsApp).
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const enterSelect = useCallback((message: Message) => {
+    setSelectMode(true);
+    setSelectedIds(new Set([message.id]));
+  }, []);
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const exitSelect = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  // Sai do modo seleção ao trocar de conversa (id muda → efeito reseta).
+  useEffect(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, [conversation.id]);
 
   const handleSend = async (text: string, mentions?: string[] | 'all') => {
     const replyToMessageId = replyingTo?.id;
@@ -985,6 +1014,7 @@ export function ChatPanel({
                 const StatusIcon = statusIcons[msg.status] || Clock;
                 const reactions = reactionMap.get(msg.externalId || '') || [];
                 const isRevoked = !!msg.revokedAt;
+                const isSelected = selectMode && selectedIds.has(msg.id);
                 const msgDate = new Date(msg.createdAt);
                 const dateKey = `${msgDate.getFullYear()}-${msgDate.getMonth()}-${msgDate.getDate()}`;
                 const showDateSeparator = dateKey !== lastDateKey;
@@ -1000,21 +1030,48 @@ export function ChatPanel({
                   )}
                   <div
                     id={`msg-${msg.id}`}
+                    onClick={
+                      selectMode && !isRevoked
+                        ? () => toggleSelected(msg.id)
+                        : undefined
+                    }
                     className={`group flex items-end gap-2 rounded-lg transition-colors duration-500 ${
                       isOutbound ? 'justify-end' : 'justify-start'
-                    } ${
-                      highlightedId === msg.id
-                        ? 'bg-primary/10 ring-2 ring-primary'
-                        : ''
+                    } ${selectMode && !isRevoked ? 'cursor-pointer px-1 py-0.5' : ''} ${
+                      isSelected
+                        ? 'bg-primary/10'
+                        : highlightedId === msg.id
+                          ? 'bg-primary/10 ring-2 ring-primary'
+                          : ''
                     }`}
                   >
+                    {/* Checkbox do modo seleção. mr-auto o prende à esquerda
+                        mesmo quando a linha é justify-end (mensagem nossa). */}
+                    {selectMode && (
+                      <span
+                        className={`self-center ${isOutbound ? 'mr-auto' : ''}`}
+                      >
+                        <span
+                          className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors ${
+                            isRevoked
+                              ? 'border-zinc-200 dark:border-zinc-700'
+                              : isSelected
+                                ? 'border-primary bg-primary text-white'
+                                : 'border-zinc-300 text-transparent dark:border-zinc-600'
+                          }`}
+                        >
+                          <Check className="h-3 w-3" />
+                        </span>
+                      </span>
+                    )}
                     {/* Botão "Responder" no hover. Aparece do lado de
                         FORA da bolha — esquerda quando outbound (msg
                         nossa, espaço à direita da bolha), direita quando
                         inbound (msg do cliente, espaço à esquerda).
                         Reactions e bolhas curtas mantêm o botão visível.
-                        Mensagens já revogadas não mostram ações. */}
-                    {isOutbound && !isRevoked && (
+                        Mensagens já revogadas não mostram ações.
+                        No modo seleção as ações somem. */}
+                    {isOutbound && !isRevoked && !selectMode && (
                       <div className="flex items-center gap-1 self-center opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           type="button"
@@ -1033,6 +1090,15 @@ export function ChatPanel({
                           aria-label="Encaminhar esta mensagem"
                         >
                           <Forward className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => enterSelect(msg)}
+                          className="rounded-full bg-white p-1.5 text-zinc-400 shadow-sm ring-1 ring-zinc-200 hover:text-zinc-700 dark:bg-zinc-800 dark:ring-zinc-700 dark:hover:text-zinc-100"
+                          title="Selecionar (encaminhar várias)"
+                          aria-label="Selecionar mensagens para encaminhar"
+                        >
+                          <CheckSquare className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"
@@ -1065,7 +1131,7 @@ export function ChatPanel({
                         }
                       />
                     )}
-                    <div className="relative max-w-[75%]">
+                    <div className={`relative max-w-[75%] ${selectMode ? 'pointer-events-none select-none' : ''}`}>
                       {conversation.isGroup && !isOutbound && msg.senderName && (
                         <p className="mb-0.5 ml-1 text-xs font-semibold text-primary">
                           {msg.senderName}
@@ -1266,7 +1332,7 @@ export function ChatPanel({
                         </div>
                       )}
                     </div>
-                    {!isOutbound && !isRevoked && (
+                    {!isOutbound && !isRevoked && !selectMode && (
                       <div className="flex items-center gap-1 self-center opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           type="button"
@@ -1286,6 +1352,15 @@ export function ChatPanel({
                         >
                           <Forward className="h-3.5 w-3.5" />
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => enterSelect(msg)}
+                          className="rounded-full bg-white p-1.5 text-zinc-400 shadow-sm ring-1 ring-zinc-200 hover:text-zinc-700 dark:bg-zinc-800 dark:ring-zinc-700 dark:hover:text-zinc-100"
+                          title="Selecionar (encaminhar várias)"
+                          aria-label="Selecionar mensagens para encaminhar"
+                        >
+                          <CheckSquare className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1298,35 +1373,73 @@ export function ChatPanel({
         )}
       </div>
 
-      {replyingTo && (
-        <ReplyPreviewBar
-          message={replyingTo}
-          onCancel={cancelReply}
-          mentionNames={mentionNames}
-        />
+      {selectMode ? (
+        // Barra do modo seleção (substitui o composer, estilo WhatsApp).
+        <div className="flex items-center gap-3 border-t border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+          <button
+            type="button"
+            onClick={exitSelect}
+            className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            aria-label="Cancelar seleção"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <span className="flex-1 text-sm font-medium text-zinc-700 dark:text-zinc-200">
+            {selectedIds.size === 0
+              ? 'Selecione mensagens'
+              : `${selectedIds.size} selecionada${selectedIds.size === 1 ? '' : 's'}`}
+          </span>
+          <button
+            type="button"
+            disabled={selectedIds.size === 0}
+            onClick={() => {
+              const chosen = messages.filter((m) => selectedIds.has(m.id));
+              if (chosen.length === 0) return;
+              setForwardMessages(chosen);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Forward className="h-4 w-4" />
+            Encaminhar
+          </button>
+        </div>
+      ) : (
+        <>
+          {replyingTo && (
+            <ReplyPreviewBar
+              message={replyingTo}
+              onCancel={cancelReply}
+              mentionNames={mentionNames}
+            />
+          )}
+          <ChatInput
+            onSend={handleSend}
+            onSendAudio={handleSendAudio}
+            onSendFile={handleSendFile}
+            onSchedule={async (text, sendAtIso) => {
+              await scheduledMessagesService.schedule({
+                conversationId: conversation.id,
+                type: 'TEXT',
+                content: { text },
+                sendAt: sendAtIso,
+              });
+              queryClient.invalidateQueries({ queryKey: ['scheduled-messages'] });
+            }}
+            disabled={conversation.status === 'CLOSED'}
+            participants={participants}
+            quickReplies={quickReplies}
+            onSendQuickReply={handleSendQuickReply}
+          />
+        </>
       )}
-      <ChatInput
-        onSend={handleSend}
-        onSendAudio={handleSendAudio}
-        onSendFile={handleSendFile}
-        onSchedule={async (text, sendAtIso) => {
-          await scheduledMessagesService.schedule({
-            conversationId: conversation.id,
-            type: 'TEXT',
-            content: { text },
-            sendAt: sendAtIso,
-          });
-          queryClient.invalidateQueries({ queryKey: ['scheduled-messages'] });
-        }}
-        disabled={conversation.status === 'CLOSED'}
-        participants={participants}
-        quickReplies={quickReplies}
-        onSendQuickReply={handleSendQuickReply}
-      />
       <ForwardMessageDialog
-        message={forwardingMessage}
+        messages={forwardMessages}
         originChannel={conversation.channel}
-        onClose={() => setForwardingMessage(null)}
+        onClose={() => {
+          setForwardMessages(null);
+          // Encaminhou via seleção múltipla → sai do modo seleção.
+          exitSelect();
+        }}
       />
     </div>
   );

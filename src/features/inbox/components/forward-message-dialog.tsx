@@ -67,14 +67,16 @@ function MiniAvatar({ name, avatarUrl }: { name?: string | null; avatarUrl?: str
 }
 
 interface Props {
-  message: Message | null;
+  /** Mensagens a encaminhar. null/vazio = modal fechado. Uma ou várias. */
+  messages: Message[] | null;
   /** Canal de origem — usado como default do canal ao digitar número novo. */
   originChannel: ChannelInfo;
   onClose: () => void;
 }
 
-export function ForwardMessageDialog({ message, originChannel, onClose }: Props) {
-  const open = !!message;
+export function ForwardMessageDialog({ messages, originChannel, onClose }: Props) {
+  const open = !!messages && messages.length > 0;
+  const firstMessage = messages?.[0] ?? null;
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -91,7 +93,7 @@ export function ForwardMessageDialog({ message, originChannel, onClose }: Props)
       setNewPhone('');
       setNewChannelId('');
     }
-  }, [open, message?.id]);
+  }, [open, firstMessage?.id, messages?.length]);
 
   // Debounce da busca (mesmo padrão da conversation-list).
   useEffect(() => {
@@ -150,7 +152,7 @@ export function ForwardMessageDialog({ message, originChannel, onClose }: Props)
     setNewChannelId(isWhatsapp(originChannel.type) ? originChannel.id : fallback || '');
   }, [open, whatsappChannels, originChannel, newChannelId]);
 
-  if (!open || !message) return null;
+  if (!open || !messages || messages.length === 0) return null;
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -169,25 +171,41 @@ export function ForwardMessageDialog({ message, originChannel, onClose }: Props)
     if (!canSubmit) return;
     setSending(true);
     try {
-      const result = await inboxService.forwardMessage({
-        messageId: message.id,
-        conversationIds: selected.size > 0 ? Array.from(selected) : undefined,
-        contacts: newNumberValid
-          ? [{ channelId: newChannelId, phone: newPhone.trim().replace(/\D/g, '') }]
-          : undefined,
-      });
+      const conversationIds = selected.size > 0 ? Array.from(selected) : undefined;
+      const contacts = newNumberValid
+        ? [{ channelId: newChannelId, phone: newPhone.trim().replace(/\D/g, '') }]
+        : undefined;
 
-      const sentCount = result.sent?.length ?? 0;
-      const failedCount = result.failed?.length ?? 0;
+      // Uma chamada de forward por mensagem (o backend encaminha 1 msg → N
+      // destinos). Sequencial pra preservar a ordem no destino.
+      let sentCount = 0;
+      const failures: string[] = [];
+      for (const msg of messages) {
+        const result = await inboxService.forwardMessage({
+          messageId: msg.id,
+          conversationIds,
+          contacts,
+        });
+        sentCount += result.sent?.length ?? 0;
+        for (const f of result.failed ?? []) failures.push(f.reason);
+      }
+
+      const failedCount = failures.length;
       if (sentCount > 0 && failedCount === 0) {
         toast.success(
-          sentCount === 1 ? 'Mensagem encaminhada' : `Encaminhada para ${sentCount} conversas`,
+          messages.length === 1 && sentCount === 1
+            ? 'Mensagem encaminhada'
+            : `Encaminhado (${sentCount} envio${sentCount === 1 ? '' : 's'})`,
         );
       } else if (sentCount > 0) {
         toast.warning(
-          `Encaminhada para ${sentCount}, falhou em ${failedCount}: ${result.failed
-            .map((f) => f.reason)
+          `Enviado ${sentCount}, falhou ${failedCount}: ${failures
+            .slice(0, 3)
             .join('; ')}`,
+        );
+      } else {
+        toast.error(
+          `Falha ao encaminhar: ${failures.slice(0, 3).join('; ') || 'erro desconhecido'}`,
         );
       }
       onClose();
@@ -230,11 +248,29 @@ export function ForwardMessageDialog({ message, originChannel, onClose }: Props)
         {/* Preview do que está sendo encaminhado. */}
         <div className="border-b border-zinc-100 bg-zinc-50/60 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900/40">
           <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-400">
-            Mensagem
+            {messages.length === 1 ? 'Mensagem' : `${messages.length} mensagens`}
           </p>
-          <p className="mt-0.5 line-clamp-2 text-sm text-zinc-700 dark:text-zinc-200">
-            {forwardPreview(message) || '(sem texto)'}
-          </p>
+          {messages.length === 1 ? (
+            <p className="mt-0.5 line-clamp-2 text-sm text-zinc-700 dark:text-zinc-200">
+              {forwardPreview(messages[0]) || '(sem texto)'}
+            </p>
+          ) : (
+            <div className="mt-1 space-y-0.5">
+              {messages.slice(0, 3).map((m) => (
+                <p
+                  key={m.id}
+                  className="line-clamp-1 text-xs text-zinc-600 dark:text-zinc-300"
+                >
+                  • {forwardPreview(m) || '(sem texto)'}
+                </p>
+              ))}
+              {messages.length > 3 && (
+                <p className="text-xs text-zinc-400">
+                  +{messages.length - 3} mais…
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">

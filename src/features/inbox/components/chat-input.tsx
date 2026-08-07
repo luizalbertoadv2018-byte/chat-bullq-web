@@ -102,41 +102,73 @@ export function ChatInput({
   const [isSending, setIsSending] = useState(false);
   const [isSendingAudio, setIsSendingAudio] = useState(false);
   const [isSendingFile, setIsSendingFile] = useState(false);
-  const [pastedImage, setPastedImage] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // Arquivos em espera pra enviar (colados, escolhidos no clipe ou arrastados).
+  // A legenda do textarea vai só no primeiro; os demais seguem sem legenda,
+  // igual ao comportamento de álbum do WhatsApp.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  // Progresso do envio em lote ("2/5"), pra dar feedback em uploads grandes.
+  const [sendProgress, setSendProgress] = useState<{ done: number; total: number } | null>(null);
+  // Overlay "solte aqui" enquanto um arquivo é arrastado sobre o composer.
+  const [isDragging, setIsDragging] = useState(false);
+  // dragenter/dragleave disparam também nos filhos; um contador evita que o
+  // overlay pisque ao passar o cursor entre elementos internos.
+  const dragDepth = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorder = useAudioRecorder();
 
-  // Preview da imagem colada; revoga o objectURL em toda troca/descarte/unmount.
+  // URLs de preview só pra arquivos de imagem; revoga em toda troca/unmount.
+  const [previews, setPreviews] = useState<Map<File, string>>(new Map());
   useEffect(() => {
-    if (!pastedImage) {
-      setPreviewUrl(null);
-      return;
+    const map = new Map<File, string>();
+    for (const f of pendingFiles) {
+      if (f.type.startsWith('image/')) map.set(f, URL.createObjectURL(f));
     }
-    const url = URL.createObjectURL(pastedImage);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [pastedImage]);
+    setPreviews(map);
+    return () => {
+      for (const url of map.values()) URL.revokeObjectURL(url);
+    };
+  }, [pendingFiles]);
+
+  /** Adiciona arquivos à fila de envio (dedup por nome+tamanho+data). */
+  const addFiles = useCallback((files: FileList | File[]) => {
+    const arr = Array.from(files);
+    if (!arr.length) return;
+    setPendingFiles((prev) => {
+      const key = (f: File) => `${f.name}:${f.size}:${f.lastModified}`;
+      const seen = new Set(prev.map(key));
+      const fresh = arr.filter((f) => !seen.has(key(f)));
+      return fresh.length ? [...prev, ...fresh] : prev;
+    });
+  }, []);
+
+  const removePendingAt = (idx: number) =>
+    setPendingFiles((prev) => prev.filter((_, i) => i !== idx));
 
   const handleSubmit = useCallback(async () => {
-    // Envio da imagem colada (com legenda opcional vinda do textarea).
-    if (pastedImage) {
+    // Envio dos arquivos em espera (legenda opcional só no primeiro).
+    if (pendingFiles.length > 0) {
       if (isSendingFile || !onSendFile) return;
+      const caption = text.trim();
+      const files = pendingFiles;
       setIsSendingFile(true);
       try {
-        await onSendFile(pastedImage, text.trim() || undefined);
-        setPastedImage(null);
+        for (let i = 0; i < files.length; i++) {
+          setSendProgress({ done: i, total: files.length });
+          await onSendFile(files[i], i === 0 && caption ? caption : undefined);
+        }
+        setPendingFiles([]);
         setText('');
         if (textareaRef.current) {
           textareaRef.current.style.height = 'auto';
         }
       } catch (err: any) {
         toast.error(
-          err?.response?.data?.message || err?.message || 'Erro ao enviar imagem',
+          err?.response?.data?.message || err?.message || 'Erro ao enviar arquivo',
         );
       } finally {
         setIsSendingFile(false);
+        setSendProgress(null);
       }
       return;
     }
@@ -169,7 +201,7 @@ export function ChatInput({
     } finally {
       setIsSending(false);
     }
-  }, [pastedImage, text, isSending, isSendingFile, onSend, onSendFile, picked]);
+  }, [pendingFiles, text, isSending, isSendingFile, onSend, onSendFile, picked]);
 
   const handleSchedule = useCallback(
     async (close: () => void) => {
@@ -351,28 +383,29 @@ export function ChatInput({
     (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
       const items = e.clipboardData?.items;
       if (!items || !onSendFile) return;
+      const images: File[] = [];
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         if (item.kind === 'file' && item.type.startsWith('image/')) {
           const file = item.getAsFile();
           if (!file) continue;
-          e.preventDefault(); // evita colar o "path" como texto
           // Prints vêm sem nome útil ("image.png"); dá um nome único p/ o upload.
           const ext = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
           const named =
             file.name && file.name !== 'image.png'
               ? file
-              : new File([file], `pasted-${Date.now()}.${ext}`, { type: file.type });
-          setPastedImage(named);
-          return; // usa só a primeira imagem
+              : new File([file], `pasted-${Date.now()}-${i}.${ext}`, { type: file.type });
+          images.push(named);
         }
+      }
+      if (images.length) {
+        e.preventDefault(); // evita colar o "path" como texto
+        addFiles(images);
       }
       // sem imagem no clipboard → deixa o paste de texto normal seguir
     },
-    [onSendFile],
+    [onSendFile, addFiles],
   );
-
-  const discardImage = () => setPastedImage(null); // useEffect revoga a URL
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Com o menu de respostas prontas aberto, as setas/Enter/Tab pertencem a ele.
@@ -464,24 +497,51 @@ export function ChatInput({
   }, [recorder, onSendAudio]);
 
   const handleFileChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      // Limpa o value pra permitir reenviar o MESMO arquivo em seguida —
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      // Limpa o value pra permitir reescolher o MESMO arquivo em seguida —
       // sem isso o onChange não dispara na segunda escolha.
       e.target.value = '';
-      if (!file || !onSendFile) return;
-      setIsSendingFile(true);
-      try {
-        await onSendFile(file);
-      } catch (err: any) {
-        toast.error(
-          err?.response?.data?.message || err?.message || 'Erro ao enviar arquivo',
-        );
-      } finally {
-        setIsSendingFile(false);
+      if (files?.length) addFiles(files);
+    },
+    [addFiles],
+  );
+
+  // --- Drag & drop de arquivos sobre o composer -------------------------
+  const hasDraggedFiles = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer?.types ?? []).includes('Files');
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!hasDraggedFiles(e)) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setIsDragging(true);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!hasDraggedFiles(e)) return;
+    e.preventDefault(); // necessário pra o browser aceitar o drop
+    e.dataTransfer.dropEffect = 'copy';
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!hasDraggedFiles(e)) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      dragDepth.current = 0;
+      setIsDragging(false);
+      if (!onSendFile) return;
+      const files = e.dataTransfer?.files;
+      if (files?.length) {
+        e.preventDefault();
+        addFiles(files);
       }
     },
-    [onSendFile],
+    [onSendFile, addFiles],
   );
 
   const formatElapsed = (ms: number) => {
@@ -568,10 +628,23 @@ export function ChatInput({
 
   // IDLE MODE: text input + mic button.
   const canRecord = !!onSendAudio;
-  const showMic = canRecord && !text.trim() && !pastedImage;
+  const hasPending = pendingFiles.length > 0;
+  const showMic = canRecord && !text.trim() && !hasPending;
 
   return (
-    <div className="relative border-t border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+    <div
+      className="relative border-t border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && onSendFile && (
+        <div className="pointer-events-none absolute inset-1 z-40 flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-primary bg-primary/5 backdrop-blur-sm dark:bg-primary/10">
+          <Paperclip className="h-6 w-6 text-primary" />
+          <p className="text-sm font-medium text-primary">Solte os arquivos aqui pra enviar</p>
+        </div>
+      )}
       {mentionMatches.length > 0 && (
         <div className="absolute bottom-full left-3 z-20 mb-1 max-h-64 w-72 overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
           {mentionMatches.map((p, i) => (
@@ -672,25 +745,71 @@ export function ChatInput({
           ))}
         </div>
       )}
-      {pastedImage && previewUrl && (
-        <div className="mb-2 flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-700 dark:bg-zinc-900">
-          <img
-            src={previewUrl}
-            alt="Imagem colada"
-            className="h-16 w-16 rounded-lg object-cover"
-          />
-          <span className="flex-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
-            {pastedImage.name}
-          </span>
-          <button
-            type="button"
-            onClick={discardImage}
-            disabled={isSendingFile}
-            className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-red-500 disabled:opacity-50 dark:hover:bg-zinc-800"
-            aria-label="Descartar imagem"
-          >
-            <X className="h-4 w-4" />
-          </button>
+      {hasPending && (
+        <div className="mb-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="mb-1.5 flex items-center justify-between px-0.5">
+            <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+              {pendingFiles.length === 1
+                ? '1 arquivo'
+                : `${pendingFiles.length} arquivos`}
+              {isSendingFile && sendProgress
+                ? ` · enviando ${sendProgress.done + 1}/${sendProgress.total}…`
+                : ''}
+            </span>
+            {!isSendingFile && (
+              <button
+                type="button"
+                onClick={() => setPendingFiles([])}
+                className="text-[11px] text-zinc-400 hover:text-red-500"
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {pendingFiles.map((file, idx) => {
+              const preview = previews.get(file);
+              return (
+                <div
+                  key={`${file.name}-${idx}`}
+                  className="group/att relative flex h-20 w-20 shrink-0 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800"
+                  title={file.name}
+                >
+                  {preview ? (
+                    <img src={preview} alt={file.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-1 px-1 text-zinc-500 dark:text-zinc-400">
+                      <FileText className="h-6 w-6" />
+                      <span className="w-full truncate text-center text-[9px] leading-tight">
+                        {file.name}
+                      </span>
+                    </div>
+                  )}
+                  {!isSendingFile && (
+                    <button
+                      type="button"
+                      onClick={() => removePendingAt(idx)}
+                      className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover/att:opacity-100"
+                      aria-label={`Remover ${file.name}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            {!isSendingFile && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex h-20 w-20 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-300 text-zinc-400 hover:border-primary hover:text-primary dark:border-zinc-600"
+                aria-label="Adicionar mais arquivos"
+              >
+                <Paperclip className="h-5 w-5" />
+                <span className="text-[9px]">Adicionar</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
       <div className="flex items-end gap-2">
@@ -698,6 +817,7 @@ export function ChatInput({
           ref={fileInputRef}
           type="file"
           accept={FILE_ACCEPT}
+          multiple
           onChange={handleFileChange}
           className="hidden"
         />
@@ -765,7 +885,7 @@ export function ChatInput({
             setTimeout(closeSlash, 120);
           }}
           onPaste={handlePaste}
-          placeholder={pastedImage ? 'Adicione uma legenda...' : 'Digite uma mensagem...'}
+          placeholder={hasPending ? 'Adicione uma legenda...' : 'Digite uma mensagem...'}
           rows={1}
           className="max-h-40 min-h-[40px] flex-1 resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm placeholder:text-zinc-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
         />
@@ -780,7 +900,7 @@ export function ChatInput({
           </button>
         ) : (
           <>
-            {onSchedule && !pastedImage && !!text.trim() && (
+            {onSchedule && !hasPending && !!text.trim() && (
               <Popover className="relative">
                 <PopoverButton
                   type="button"
@@ -830,7 +950,7 @@ export function ChatInput({
             )}
             <button
               onClick={handleSubmit}
-              disabled={(!text.trim() && !pastedImage) || isSending || isSendingFile}
+              disabled={(!text.trim() && !hasPending) || isSending || isSendingFile}
               className="mb-1 rounded-lg bg-primary p-2.5 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
               aria-label="Enviar mensagem"
             >
