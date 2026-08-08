@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Tag as TagIcon, Building2, MapPin, CircleDot, Plus, X, Check, Pencil, Sparkles, Loader2 } from 'lucide-react';
+import { Tag as TagIcon, Building2, MapPin, CircleDot, Plus, X, Check, Pencil, Sparkles, Loader2, IdCard } from 'lucide-react';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { inboxService, type Conversation } from '../services/inbox.service';
 import { tagsService } from '@/features/settings/services/tags.service';
@@ -22,6 +22,15 @@ function initials(name?: string | null) {
   return (name || '??').slice(0, 2).toUpperCase();
 }
 
+/** Formata progressivamente enquanto digita: 000.000.000-00. */
+function formatCpf(value: string) {
+  const d = value.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
 export function ConversationPropertiesPanel({
   conversation,
   onUpdate,
@@ -36,6 +45,16 @@ export function ConversationPropertiesPanel({
   const [origemValue, setOrigemValue] = useState<string>(
     (conversation.contact?.metadata?.origem as string) ?? '',
   );
+  const [cpfValue, setCpfValue] = useState<string>(
+    formatCpf(conversation.contact?.cpf ?? ''),
+  );
+
+  // Sincroniza o CPF quando o contato completo chega (a lista não traz cpf; o
+  // getConversation traz). Não atropela edição em andamento.
+  useEffect(() => {
+    const cpf = formatCpf(conversation.contact?.cpf ?? '');
+    setCpfValue((prev) => (prev === '' ? cpf : prev));
+  }, [conversation.contact?.cpf]);
 
   // Sincroniza origem quando o metadata do contato chega (a conversa da lista
   // não traz metadata; o refetch do getConversation traz). Só preenche se o
@@ -100,6 +119,18 @@ export function ConversationPropertiesPanel({
     const v = origemValue.trim();
     if (v === ((c?.metadata?.origem as string) ?? '')) return;
     run(() => inboxService.updateContact(c.id, { metadata: { origem: v } }), 'Origem atualizada');
+  };
+  const saveCpf = () => {
+    const digits = cpfValue.replace(/\D/g, '');
+    if (digits === (c?.cpf ?? '')) return; // sem mudança
+    if (digits !== '' && digits.length !== 11) {
+      toast.error('CPF precisa ter 11 dígitos.');
+      return;
+    }
+    run(
+      () => inboxService.updateContact(c.id, { cpf: digits }),
+      digits ? 'CPF salvo' : 'CPF removido',
+    );
   };
 
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -191,6 +222,19 @@ export function ConversationPropertiesPanel({
 
       {/* Propriedades */}
       <Section title="Propriedades">
+        {/* CPF — chave que casa o contato com o cliente no Tramitação */}
+        <Row icon={<IdCard className="h-4 w-4" />} label="CPF">
+          <input
+            value={cpfValue}
+            onChange={(e) => setCpfValue(formatCpf(e.target.value))}
+            onBlur={saveCpf}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            placeholder="000.000.000-00"
+            inputMode="numeric"
+            className="w-full rounded-md border border-transparent bg-transparent py-1 text-sm text-zinc-700 outline-none placeholder:text-zinc-400 hover:bg-zinc-50 focus:border-primary/40 dark:text-zinc-200 dark:hover:bg-zinc-900"
+          />
+        </Row>
+
         {/* Status */}
         <Row icon={<span className="h-3 w-3 rounded-full" style={{ backgroundColor: currentStatus?.color ?? '#a1a1aa' }} />} label="Status">
           <select

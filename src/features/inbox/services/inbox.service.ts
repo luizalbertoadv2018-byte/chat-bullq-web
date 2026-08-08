@@ -15,6 +15,8 @@ export interface Contact {
   id: string;
   name: string | null;
   phone: string | null;
+  /** CPF (só dígitos) — capturado da conversa ou preenchido à mão. */
+  cpf?: string | null;
   avatarUrl: string | null;
   /** Contato bloqueado — inbound é descartado (sem conversa/mensagem/IA). */
   blocked?: boolean;
@@ -451,10 +453,10 @@ export const inboxService = {
     return data.data;
   },
 
-  /** Atualiza campos do contato (nome, origem em metadata, etc.). */
+  /** Atualiza campos do contato (nome, CPF, origem em metadata, etc.). */
   async updateContact(
     contactId: string,
-    patch: { name?: string; metadata?: Record<string, any> },
+    patch: { name?: string; cpf?: string; metadata?: Record<string, any> },
   ): Promise<void> {
     await api.patch(`/contacts/${contactId}`, patch);
   },
