@@ -461,6 +461,14 @@ export const inboxService = {
     await api.patch(`/contacts/${contactId}`, patch);
   },
 
+  /** Sobe o contato pro Tramitação manualmente (cliente presencial). */
+  async releaseToTramitacao(
+    contactId: string,
+  ): Promise<{ queued?: boolean; alreadyReleased?: boolean }> {
+    const { data } = await api.post(`/contacts/${contactId}/tramitacao-release`);
+    return data.data ?? data;
+  },
+
   async archive(conversationId: string): Promise<Conversation> {
     const { data } = await api.post(`/conversations/${conversationId}/archive`);
     return data.data;

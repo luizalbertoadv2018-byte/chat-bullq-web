@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Tag as TagIcon, Building2, MapPin, CircleDot, Plus, X, Check, Pencil, Sparkles, Loader2, IdCard } from 'lucide-react';
+import { Tag as TagIcon, Building2, MapPin, CircleDot, Plus, X, Check, Pencil, Sparkles, Loader2, IdCard, UploadCloud, CheckCircle2 } from 'lucide-react';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { inboxService, type Conversation } from '../services/inbox.service';
 import { tagsService } from '@/features/settings/services/tags.service';
@@ -133,6 +133,29 @@ export function ConversationPropertiesPanel({
     );
   };
 
+  const tramitacaoReleased = !!c?.metadata?.tramitacaoReleased;
+  const [releasing, setReleasing] = useState(false);
+  const releaseTramitacao = async () => {
+    if (
+      !window.confirm(
+        'Subir este contato pro Tramitação agora? Cria o cliente lá com os dados preenchidos e envia os documentos que ele já mandou. Use para cliente presencial que não vai assinar pela ZapSign.',
+      )
+    )
+      return;
+    setReleasing(true);
+    try {
+      const r = await inboxService.releaseToTramitacao(c.id);
+      onUpdate();
+      toast.success(
+        r.alreadyReleased ? 'Este contato já está no Tramitação.' : 'Enviado pro Tramitação.',
+      );
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Erro ao subir pro Tramitação');
+    } finally {
+      setReleasing(false);
+    }
+  };
+
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryText, setSummaryText] = useState('');
@@ -234,6 +257,30 @@ export function ConversationPropertiesPanel({
             className="w-full rounded-md border border-transparent bg-transparent py-1 text-sm text-zinc-700 outline-none placeholder:text-zinc-400 hover:bg-zinc-50 focus:border-primary/40 dark:text-zinc-200 dark:hover:bg-zinc-900"
           />
         </Row>
+
+        {/* Tramitação — subir manualmente (cliente presencial sem assinatura) */}
+        <div className="px-4 py-2">
+          {tramitacaoReleased ? (
+            <div className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              No Tramitação
+            </div>
+          ) : (
+            <button
+              onClick={releaseTramitacao}
+              disabled={releasing || busy}
+              title="Cria o cliente no Tramitação e envia os documentos já recebidos. Para cliente presencial que não assina pela ZapSign."
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-600 transition-colors hover:border-primary hover:text-primary disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+            >
+              {releasing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <UploadCloud className="h-4 w-4" />
+              )}
+              Subir no Tramitação
+            </button>
+          )}
+        </div>
 
         {/* Status */}
         <Row icon={<span className="h-3 w-3 rounded-full" style={{ backgroundColor: currentStatus?.color ?? '#a1a1aa' }} />} label="Status">
