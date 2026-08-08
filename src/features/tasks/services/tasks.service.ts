@@ -28,6 +28,8 @@ export interface Task {
   contactId: string | null;
   conversationId: string | null;
   assignedToId: string | null;
+  calendarEventId: string | null;
+  calendarHtmlLink: string | null;
   createdAt: string;
   updatedAt: string;
   contact?: TaskContactRef | null;

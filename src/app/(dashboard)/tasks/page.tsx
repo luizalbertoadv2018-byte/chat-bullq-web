@@ -9,6 +9,7 @@ import {
   Trash2,
   Pencil,
   CalendarPlus,
+  CalendarCheck,
   CalendarClock,
   Play,
   Check,
@@ -407,15 +408,27 @@ export default function TasksPage() {
                                 <RotateCcw className="h-3.5 w-3.5" />
                               </button>
                             )}
-                            <a
-                              href={googleCalUrl(t)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Adicionar ao Google Agenda"
-                              className="rounded p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
-                            >
-                              <CalendarPlus className="h-3.5 w-3.5" />
-                            </a>
+                            {t.calendarHtmlLink ? (
+                              <a
+                                href={t.calendarHtmlLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Sincronizado — abrir no Google Agenda"
+                                className="rounded p-1.5 text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20"
+                              >
+                                <CalendarCheck className="h-3.5 w-3.5" />
+                              </a>
+                            ) : (
+                              <a
+                                href={googleCalUrl(t)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Adicionar ao Google Agenda"
+                                className="rounded p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
+                              >
+                                <CalendarPlus className="h-3.5 w-3.5" />
+                              </a>
+                            )}
                             <div className="flex-1" />
                             <button onClick={() => openEdit(t)} title="Editar" className="rounded p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800">
                               <Pencil className="h-3.5 w-3.5" />
