@@ -55,6 +55,10 @@ export interface Conversation {
   departmentId?: string | null;
   /** Relação do departamento (vem no detalhe/findById). */
   department?: { id: string; name: string } | null;
+  /** FK da situação de negócio (rótulo configurável). */
+  situacaoId?: string | null;
+  /** Relação da situação (vem no detalhe e na lista). */
+  situacao?: { id: string; name: string; color: string } | null;
   protocol: string | null;
   subject?: string | null;
   isGroup: boolean;
@@ -388,6 +392,7 @@ export const inboxService = {
       status?: string;
       departmentId?: string | null;
       assignedToId?: string | null;
+      situacaoId?: string | null;
     },
   ): Promise<Conversation> {
     const { data } = await api.patch(`/conversations/${conversationId}`, patch);

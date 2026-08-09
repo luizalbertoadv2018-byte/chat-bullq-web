@@ -7,6 +7,7 @@ import { Tag as TagIcon, Building2, MapPin, CircleDot, Plus, X, Check, Pencil, S
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { inboxService, type Conversation } from '../services/inbox.service';
 import { tagsService } from '@/features/settings/services/tags.service';
+import { situacoesService } from '@/features/settings/services/situacoes.service';
 import { useOrgId } from '@/hooks/use-org-query-key';
 import { cn } from '@/lib/utils';
 
@@ -72,6 +73,10 @@ export function ConversationPropertiesPanel({
     queryKey: ['departments', orgId],
     queryFn: () => inboxService.listDepartments(),
   });
+  const { data: situacoes = [] } = useQuery({
+    queryKey: ['situacoes', orgId],
+    queryFn: () => situacoesService.list(),
+  });
 
   const assignedTags = useMemo(
     () => (conversation.tags ?? []).map((t: any) => t.tag ?? t).filter(Boolean),
@@ -100,6 +105,11 @@ export function ConversationPropertiesPanel({
     run(
       () => inboxService.updateConversation(conversation.id, { departmentId: value || null }),
       'Departamento atualizado',
+    );
+  const setSituacao = (value: string) =>
+    run(
+      () => inboxService.updateConversation(conversation.id, { situacaoId: value || null }),
+      'Situação atualizada',
     );
   const toggleTag = (tagId: string, isOn: boolean) =>
     run(
@@ -307,6 +317,32 @@ export function ConversationPropertiesPanel({
             {!currentStatus && <option value={conversation.status}>Selecionar status</option>}
             {STATUS_OPTIONS.map((s) => (
               <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+        </Row>
+
+        {/* Situação (rótulo de negócio, configurável em Configurações → Situações) */}
+        <Row
+          icon={
+            <span
+              className="h-3 w-3 rounded-full"
+              style={{
+                backgroundColor:
+                  situacoes.find((s) => s.id === conversation.situacaoId)?.color ?? '#d4d4d8',
+              }}
+            />
+          }
+          label="Situação"
+        >
+          <select
+            disabled={busy}
+            value={conversation.situacaoId ?? ''}
+            onChange={(e) => setSituacao(e.target.value)}
+            className="w-full cursor-pointer rounded-md border border-transparent bg-transparent py-1 text-sm text-zinc-700 outline-none hover:bg-zinc-50 focus:border-primary/40 dark:text-zinc-200 dark:hover:bg-zinc-900"
+          >
+            <option value="">Sem situação</option>
+            {situacoes.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
         </Row>
