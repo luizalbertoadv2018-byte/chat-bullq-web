@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Tag as TagIcon, Building2, MapPin, CircleDot, Plus, X, Check, Pencil, Sparkles, Loader2, IdCard, UploadCloud, CheckCircle2 } from 'lucide-react';
+import { Tag as TagIcon, Building2, MapPin, CircleDot, Plus, X, Check, Pencil, Sparkles, Loader2, IdCard, UploadCloud, CheckCircle2, RefreshCw } from 'lucide-react';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { inboxService, type Conversation } from '../services/inbox.service';
 import { tagsService } from '@/features/settings/services/tags.service';
@@ -135,20 +135,16 @@ export function ConversationPropertiesPanel({
 
   const tramitacaoReleased = !!c?.metadata?.tramitacaoReleased;
   const [releasing, setReleasing] = useState(false);
-  const releaseTramitacao = async () => {
-    if (
-      !window.confirm(
-        'Subir este contato pro Tramitação agora? Cria o cliente lá com os dados preenchidos e envia os documentos que ele já mandou. Use para cliente presencial que não vai assinar pela ZapSign.',
-      )
-    )
-      return;
+  const releaseTramitacao = async (isResend = false) => {
+    const msg = isResend
+      ? 'Reenviar os documentos deste cliente pro Tramitação agora? Não duplica — só reenvia o que ainda não subiu.'
+      : 'Subir este contato pro Tramitação agora? Cria o cliente lá com os dados preenchidos e envia os documentos que ele já mandou. Use para cliente presencial que não vai assinar pela ZapSign.';
+    if (!window.confirm(msg)) return;
     setReleasing(true);
     try {
-      const r = await inboxService.releaseToTramitacao(c.id);
+      await inboxService.releaseToTramitacao(c.id);
       onUpdate();
-      toast.success(
-        r.alreadyReleased ? 'Este contato já está no Tramitação.' : 'Enviado pro Tramitação.',
-      );
+      toast.success(isResend ? 'Reenvio disparado.' : 'Enviado pro Tramitação.');
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Erro ao subir pro Tramitação');
     } finally {
@@ -261,13 +257,31 @@ export function ConversationPropertiesPanel({
         {/* Tramitação — subir manualmente (cliente presencial sem assinatura) */}
         <div className="px-4 py-2">
           {tramitacaoReleased ? (
-            <div className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              No Tramitação
+            <div className="rounded-md bg-emerald-50 px-3 py-2 dark:bg-emerald-900/20">
+              <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                No Tramitação
+              </div>
+              <p className="mt-0.5 text-[11px] leading-snug text-emerald-600/90 dark:text-emerald-500/90">
+                Novos documentos deste cliente sobem automaticamente.
+              </p>
+              <button
+                onClick={() => releaseTramitacao(true)}
+                disabled={releasing || busy}
+                title="Reenvia agora os documentos deste cliente pro Tramitação (não duplica)."
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400"
+              >
+                {releasing ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3" />
+                )}
+                Reenviar documentos agora
+              </button>
             </div>
           ) : (
             <button
-              onClick={releaseTramitacao}
+              onClick={() => releaseTramitacao(false)}
               disabled={releasing || busy}
               title="Cria o cliente no Tramitação e envia os documentos já recebidos. Para cliente presencial que não assina pela ZapSign."
               className="flex w-full items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-600 transition-colors hover:border-primary hover:text-primary disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
