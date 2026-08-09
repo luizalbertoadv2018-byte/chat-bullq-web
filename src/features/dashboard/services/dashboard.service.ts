@@ -90,7 +90,36 @@ export interface AgentPerformance {
   avgResolutionMinutes: number | null;
 }
 
+export interface PipelineMetrics {
+  overview: {
+    totalLeads: number;
+    ativos: number;
+    ganhos: number;
+    perdidos: number;
+    conversao: number | null;
+    leadsNoPeriodo: number;
+    periodoDias: number;
+  };
+  pipelines: Array<{
+    id: string;
+    name: string;
+    color: string | null;
+    total: number;
+    open: number;
+    won: number;
+    lost: number;
+    conversao: number | null;
+    avgDaysToClose: number | null;
+    stages: Array<{ name: string; type: 'NORMAL' | 'WON' | 'LOST'; count: number }>;
+  }>;
+  leadsPorDia: Array<{ date: string; count: number }>;
+}
+
 export const dashboardService = {
+  async getPipelineMetrics(days = 30): Promise<PipelineMetrics> {
+    const { data } = await api.get('/pipelines/metrics', { params: { days: String(days) } });
+    return data.data;
+  },
   async getOverview(from?: string, to?: string): Promise<DashboardOverview> {
     const params: Record<string, string> = {};
     if (from) params.from = from;

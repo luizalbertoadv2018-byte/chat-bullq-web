@@ -16,6 +16,7 @@ import { inboxService } from '@/features/inbox/services/inbox.service';
 import { useOrgId } from '@/hooks/use-org-query-key';
 import { Heatmap } from '@/features/dashboard/components/Heatmap';
 import { AgentList } from '@/features/dashboard/components/AgentList';
+import { BusinessFunnel } from '@/features/dashboard/components/BusinessFunnel';
 
 const CHANNEL_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
 
@@ -210,6 +211,9 @@ export default function DashboardPage() {
       <div className="mx-auto w-full max-w-6xl p-6">
       <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Dashboard</h1>
       <p className="mt-1 text-sm text-zinc-500">Últimos 30 dias</p>
+
+      {/* FUNIL DE NEGÓCIO (pipelines) — conversão, leads/dia, por benefício */}
+      <BusinessFunnel />
 
       {/* FUNIL DE ATENDIMENTO (estilo LiderHub) */}
       {statusCounts && (
