@@ -14,6 +14,7 @@ import {
 } from '../services/ai-agents.service';
 import { aiCatalogService } from '../services/ai-catalog.service';
 import { channelsService } from '@/features/channels/services/channels.service';
+import { pipelinesService } from '@/features/pipelines/services/pipelines.service';
 import { useOrgId } from '@/hooks/use-org-query-key';
 
 interface EditAgentDialogProps {
@@ -42,6 +43,7 @@ export function EditAgentDialog({
   >(null);
   const [triggerKeywords, setTriggerKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState('');
+  const [pipelineId, setPipelineId] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [showAddChannel, setShowAddChannel] = useState(false);
   const [newChannelId, setNewChannelId] = useState('');
@@ -74,7 +76,13 @@ export function EditAgentDialog({
     setOperationalContextUpdatedAt(agent.operationalContextUpdatedAt ?? null);
     setTriggerKeywords(agent.triggerKeywords ?? []);
     setKeywordInput('');
+    setPipelineId(agent.pipelineId ?? '');
   }, [agent]);
+
+  const { data: pipelines = [] } = useQuery({
+    queryKey: ['pipelines', orgId],
+    queryFn: () => pipelinesService.list(),
+  });
 
   if (!agent) return null;
 
@@ -116,6 +124,7 @@ export function EditAgentDialog({
         squad: squad.trim() || null,
         operationalContext: operationalContext.trim() || null,
         triggerKeywords,
+        pipelineId: pipelineId || null,
       });
       toast.success('Agente atualizado');
       onSaved();
@@ -296,6 +305,28 @@ export function EditAgentDialog({
                 <Plus className="h-3 w-3" /> Adicionar
               </button>
             </div>
+          </div>
+
+          {/* Pipeline de destino — auto-card do lead novo */}
+          <div className="rounded-lg border-2 border-indigo-200 bg-indigo-50/50 p-4 dark:border-indigo-900/40 dark:bg-indigo-900/10">
+            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800 dark:text-indigo-300">
+              Pipeline de destino (lead novo)
+            </p>
+            <p className="mt-0.5 text-[11px] text-indigo-700/80 dark:text-indigo-200/70">
+              Quando este agente assumir uma conversa, um card é criado
+              automaticamente no 1º estágio deste funil. Deixe vazio para não
+              gerar card (ex.: agente de triagem que ainda não sabe o tema).
+            </p>
+            <select
+              value={pipelineId}
+              onChange={(e) => setPipelineId(e.target.value)}
+              className="mt-3 w-full rounded-md border border-indigo-300 bg-white px-3 py-2 text-sm dark:border-indigo-900/60 dark:bg-zinc-900 dark:text-zinc-100"
+            >
+              <option value="">— Nenhum (não gera card) —</option>
+              {pipelines.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
           </div>
 
           <div className="rounded-lg border-2 border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/40 dark:bg-amber-900/10">

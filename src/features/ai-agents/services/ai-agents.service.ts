@@ -57,6 +57,8 @@ export interface AiAgent {
   capabilities: string[];
   /** Palavras-chave que roteiam a conversa direto pra este agent (antes do classifier LLM). */
   triggerKeywords: string[];
+  /** Pipeline de destino: quando este agente assume um lead, cria card no 1º estágio. */
+  pipelineId: string | null;
   modelId: string;
   modelParams: Record<string, unknown> | null;
   systemPrompt: string;
@@ -83,6 +85,7 @@ export interface CreateAgentInput {
   category?: string;
   capabilities?: string[];
   triggerKeywords?: string[];
+  pipelineId?: string | null;
   modelId: string;
   systemPrompt: string;
   temperature?: number;
