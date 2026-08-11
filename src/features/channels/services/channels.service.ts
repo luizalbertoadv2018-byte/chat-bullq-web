@@ -43,6 +43,14 @@ export interface CreateChannelPayload {
   visibility?: ChannelVisibility;
 }
 
+export interface EmbeddedSignupPayload {
+  code: string;
+  phoneNumberId: string;
+  wabaId: string;
+  name?: string;
+  visibility?: ChannelVisibility;
+}
+
 export interface UpdateChannelPayload {
   name?: string;
   config?: Record<string, any>;
@@ -98,6 +106,18 @@ export const channelsService = {
 
   async create(payload: CreateChannelPayload): Promise<Channel> {
     const { data } = await api.post<{ data: Channel }>('/channels', payload);
+    return data.data;
+  },
+
+  /**
+   * Cria um canal WhatsApp Oficial em COEXISTÊNCIA a partir do retorno do
+   * Embedded Signup da Meta (code + phone_number_id + waba_id).
+   */
+  async createFromEmbeddedSignup(payload: EmbeddedSignupPayload): Promise<Channel> {
+    const { data } = await api.post<{ data: Channel }>(
+      '/channels/whatsapp-official/embedded-signup',
+      payload,
+    );
     return data.data;
   },
 

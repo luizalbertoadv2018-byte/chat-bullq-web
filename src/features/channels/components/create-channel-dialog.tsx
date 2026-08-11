@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import { Loader2, X, Copy, Check } from 'lucide-react';
 import { channelsService, type ChannelType } from '../services/channels.service';
+import { launchEmbeddedSignup, isEmbeddedSignupConfigured } from '../lib/embedded-signup';
 import { ZappfyIcon, MetaIcon, InstagramIcon, GmailIcon } from '@/components/ui/icons';
 
 const channelTypes: { value: ChannelType; label: string; icon: React.ElementType; color: string; description: string }[] = [
@@ -22,7 +23,7 @@ const channelTypes: { value: ChannelType; label: string; icon: React.ElementType
     label: 'WhatsApp Official',
     icon: MetaIcon,
     color: 'bg-zinc-50 dark:bg-zinc-800',
-    description: 'Meta Cloud API — templates HSM, alta escala',
+    description: 'Meta Cloud API — coexistência com o app, templates HSM, alta escala',
   },
   {
     value: 'INSTAGRAM',
@@ -142,6 +143,29 @@ export function CreateChannelDialog({ open, onClose, onCreated }: CreateChannelD
     }
   };
 
+  const [connectingMeta, setConnectingMeta] = useState(false);
+  const embeddedSignupReady = isEmbeddedSignupConfigured();
+
+  const handleEmbeddedSignup = async () => {
+    setConnectingMeta(true);
+    try {
+      const { code, phoneNumberId, wabaId } = await launchEmbeddedSignup();
+      await channelsService.createFromEmbeddedSignup({
+        code,
+        phoneNumberId,
+        wabaId,
+        visibility,
+      });
+      toast.success('WhatsApp conectado em coexistência!');
+      handleClose();
+      onCreated();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Falha ao conectar com a Meta');
+    } finally {
+      setConnectingMeta(false);
+    }
+  };
+
   const onSubmitZappfy = (data: ZappfyFormData) =>
     submitChannel('WHATSAPP_ZAPPFY', data.name, { token: data.token }, data.webhookSecret);
 
@@ -238,7 +262,44 @@ export function CreateChannelDialog({ open, onClose, onCreated }: CreateChannelD
             <FormFooter isLoading={isLoading} onBack={() => setStep('type')} />
           </form>
         ) : selectedType === 'WHATSAPP_OFFICIAL' ? (
-          <form onSubmit={waForm.handleSubmit(onSubmitWaOfficial)} className="mt-6 space-y-4">
+          <div className="mt-6 space-y-4">
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                Conexão em coexistência (recomendado)
+              </p>
+              <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                Você continua usando o app do WhatsApp Business no celular E o
+                sistema ao mesmo tempo, no mesmo número. Basta escanear o QR Code
+                que aparece no popup da Meta.
+              </p>
+              <button
+                type="button"
+                onClick={handleEmbeddedSignup}
+                disabled={connectingMeta || !embeddedSignupReady}
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#1877F2] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1877F2]/90 disabled:opacity-50"
+              >
+                {connectingMeta ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MetaIcon className="h-4 w-4" />
+                )}
+                {connectingMeta ? 'Conectando…' : 'Conectar com Facebook'}
+              </button>
+              {!embeddedSignupReady && (
+                <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                  Configure NEXT_PUBLIC_META_APP_ID e NEXT_PUBLIC_META_CONFIG_ID
+                  para habilitar o botão.
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
+              <span className="text-xs text-zinc-400">ou configuração manual</span>
+              <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
+            </div>
+
+          <form onSubmit={waForm.handleSubmit(onSubmitWaOfficial)} className="space-y-4">
             <Field label="Nome do canal" placeholder="Ex: WhatsApp Business" error={waForm.formState.errors.name?.message} {...waForm.register('name')} />
             <Field label="Phone Number ID" placeholder="Encontrado no Meta Business Suite" error={waForm.formState.errors.phoneNumberId?.message} {...waForm.register('phoneNumberId')} />
             <Field label="Access Token" type="text" placeholder="System User Token ou Temporary Token" error={waForm.formState.errors.accessToken?.message} {...waForm.register('accessToken')} />
@@ -248,6 +309,7 @@ export function CreateChannelDialog({ open, onClose, onCreated }: CreateChannelD
             <WebhookUrl url={`${apiBaseUrl}/webhooks/WHATSAPP_OFFICIAL`} copied={copied} onCopy={() => handleCopyWebhook('WHATSAPP_OFFICIAL')} />
             <FormFooter isLoading={isLoading} onBack={() => setStep('type')} />
           </form>
+          </div>
         ) : selectedType === 'INSTAGRAM' ? (
           <form onSubmit={igForm.handleSubmit(onSubmitInstagram)} className="mt-6 space-y-4">
             <Field label="Nome do canal" placeholder="Ex: Instagram Loja" error={igForm.formState.errors.name?.message} {...igForm.register('name')} />
