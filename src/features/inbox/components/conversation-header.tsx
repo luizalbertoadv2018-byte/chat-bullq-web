@@ -155,15 +155,15 @@ export function ConversationHeader({
   };
 
   return (
-    <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="flex min-w-0 items-center gap-3">
         <HeaderAvatar
           name={conversation.contact.name}
           avatarUrl={conversation.contact.avatarUrl}
         />
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+        <div className="flex min-w-0 flex-col">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100">
               {conversation.contact.name || conversation.contact.phone || 'Desconhecido'}
             </div>
             {isBlocked && (
@@ -183,7 +183,7 @@ export function ConversationHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
         <AgentPinPopover conversation={conversation} onChanged={onUpdate} />
         <ConversationAiToggle
           conversation={conversation}

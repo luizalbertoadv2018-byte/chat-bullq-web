@@ -921,7 +921,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   };
 
   return (
-    <div className="flex h-full w-80 flex-col border-r border-zinc-200/80 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="flex h-full w-72 shrink-0 flex-col border-r xl:w-80 border-zinc-200/80 bg-white dark:border-zinc-800 dark:bg-zinc-950">
       {/* Abas estilo LiderHub (IA / Ativos / Pendentes / Grupos) */}
       <div className="flex items-stretch gap-0.5 overflow-x-auto border-b border-zinc-200/80 px-1.5 pt-1.5 scrollbar-none dark:border-zinc-800">
         {inboxTabs.map((t) => {

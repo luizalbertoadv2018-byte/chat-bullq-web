@@ -949,8 +949,10 @@ export function ChatPanel({
     // min-h-0 é load-bearing: sem ele, o scroll-container interno cresce
     // pelo conteúdo (default min-height de flex children) e empurra o
     // ChatInput pra fora do painel — quebra dramaticamente quando o pai
-    // é um modal com altura fixa.
-    <div className="flex min-h-0 flex-1 flex-col">
+    // é um modal com altura fixa. min-w-0 é o mesmo raciocínio na
+    // horizontal: sem ele o cabeçalho impõe sua largura mínima e, em
+    // janela estreita (monitor em retrato), o chat é cortado à direita.
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <ConversationHeader
         conversation={conversation}
         onUpdate={onConversationUpdate}
