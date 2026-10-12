@@ -8,6 +8,7 @@ import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { inboxService, type Conversation } from '../services/inbox.service';
 import { tagsService } from '@/features/settings/services/tags.service';
 import { situacoesService } from '@/features/settings/services/situacoes.service';
+import { membersService } from '@/features/settings/services/members.service';
 import { useOrgId } from '@/hooks/use-org-query-key';
 import { cn } from '@/lib/utils';
 
@@ -78,6 +79,14 @@ export function ConversationPropertiesPanel({
     queryFn: () => situacoesService.list(),
   });
 
+  const { data: members = [] } = useQuery({
+    queryKey: ['org-members'],
+    queryFn: () => membersService.list(),
+    staleTime: 60_000,
+  });
+  const activeMembers = useMemo(() => members.filter((m) => m.user.isActive), [members]);
+  const assignedId = conversation.assignedToId ?? conversation.assignedTo?.id ?? '';
+
   const assignedTags = useMemo(
     () => (conversation.tags ?? []).map((t: any) => t.tag ?? t).filter(Boolean),
     [conversation.tags],
@@ -101,6 +110,11 @@ export function ConversationPropertiesPanel({
 
   const setStatus = (value: string) =>
     run(() => inboxService.updateConversation(conversation.id, { status: value }), 'Status atualizado');
+  const setAssignee = (value: string) =>
+    run(
+      () => inboxService.assignTo(conversation.id, value || null),
+      value ? 'Responsável atualizado' : 'Atribuição removida',
+    );
   const setDepartment = (value: string) =>
     run(
       () => inboxService.updateConversation(conversation.id, { departmentId: value || null }),
@@ -241,11 +255,21 @@ export function ConversationPropertiesPanel({
       {/* Atendimento */}
       <Section title="Atendimento">
         <Row icon={<CircleDot className="h-4 w-4" />} label="Responsável">
-          <span className="text-sm text-zinc-700 dark:text-zinc-300">
-            {conversation.assignedTo?.name ?? (
-              <span className="text-zinc-400">Não atribuído</span>
+          <select
+            disabled={busy}
+            value={assignedId}
+            onChange={(e) => setAssignee(e.target.value)}
+            className="w-full cursor-pointer rounded-md border border-transparent bg-transparent py-1 text-sm text-zinc-700 outline-none hover:bg-zinc-50 focus:border-primary/40 dark:text-zinc-200 dark:hover:bg-zinc-900"
+          >
+            <option value="">Não atribuído</option>
+            {/* Responsável atual fora da lista (inativo ou lista ainda carregando) */}
+            {assignedId && !activeMembers.some((m) => m.user.id === assignedId) && (
+              <option value={assignedId}>{conversation.assignedTo?.name ?? 'Responsável atual'}</option>
             )}
-          </span>
+            {activeMembers.map((m) => (
+              <option key={m.user.id} value={m.user.id}>{m.user.name}</option>
+            ))}
+          </select>
         </Row>
       </Section>
 
