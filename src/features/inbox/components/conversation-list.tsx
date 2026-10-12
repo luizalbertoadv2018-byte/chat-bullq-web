@@ -47,6 +47,7 @@ import { channelsService } from '@/features/channels/services/channels.service';
 import { segmentsService } from '@/features/segments/services/segments.service';
 import { PROJECT_STATUSES } from '@/features/projects/project-fields';
 import { tagsService } from '@/features/settings/services/tags.service';
+import { situacoesService } from '@/features/settings/services/situacoes.service';
 import { ZappfyIcon, MetaIcon, InstagramIcon, GmailIcon } from '@/components/ui/icons';
 import { useOrgId } from '@/hooks/use-org-query-key';
 import { useSocket } from '../hooks/use-socket';
@@ -104,7 +105,10 @@ type ListFilter = 'unread' | 'archived' | 'groups';
 
 // Abas do inbox no estilo LiderHub. Cada aba filtra por status/tipo em cima
 // dos filtros existentes: IA=BOT, Ativos=OPEN, Pendentes=PENDING, Grupos=grupo.
-type InboxTab = 'todas' | 'ia' | 'ativos' | 'pendentes' | 'grupos';
+type InboxTab = 'todas' | 'ia' | 'ativos' | 'pendentes' | 'assinados' | 'grupos';
+
+/** Situação que alimenta a aba "Assinados" (o sistema a aplica ao assinar). */
+const SIGNED_SITUACAO_NAME = 'contrato assinado';
 
 const inboxTabs: {
   value: InboxTab;
@@ -116,6 +120,7 @@ const inboxTabs: {
   { value: 'ia', label: 'IA', status: 'BOT', dot: 'bg-blue-500' },
   { value: 'ativos', label: 'Ativos', status: 'OPEN', dot: 'bg-emerald-500' },
   { value: 'pendentes', label: 'Pendentes', status: 'PENDING', dot: 'bg-amber-500' },
+  { value: 'assinados', label: 'Assinados', dot: 'bg-green-600' },
   { value: 'grupos', label: 'Grupos', dot: 'bg-violet-500' },
 ];
 
@@ -421,11 +426,25 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
   // Contadores por status para as abas (IA/Ativos/Pendentes). Poll leve —
   // realtime já invalida a lista; aqui é só o número em cima das abas.
   const { data: statusCounts = {} } = useQuery({
-    queryKey: ['conversation-counts', orgId],
-    queryFn: () => inboxService.getStatusCounts(),
+    queryKey: ['conversation-counts', orgId, selectedChannelId ?? null],
+    queryFn: () => inboxService.getStatusCounts(selectedChannelId),
     refetchInterval: 30000,
     staleTime: 15000,
   });
+
+  // Aba "Assinados": conversas na situação "Contrato Assinado".
+  const { data: situacoes = [] } = useQuery({
+    queryKey: ['situacoes', orgId],
+    queryFn: () => situacoesService.list(),
+    staleTime: 60_000,
+  });
+  const signedSituacaoId = useMemo(
+    () =>
+      situacoes.find(
+        (s) => s.name.trim().toLowerCase() === SIGNED_SITUACAO_NAME,
+      )?.id ?? null,
+    [situacoes],
+  );
 
   const filteredTags = useMemo(() => {
     const q = tagSearch.trim().toLowerCase();
@@ -467,7 +486,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['conversations', orgId, viewId ?? null, filterKey, debouncedSearch, selectedChannelId, selectedSegmentId, scope, currentUserId, tab],
+    queryKey: ['conversations', orgId, viewId ?? null, filterKey, debouncedSearch, selectedChannelId, selectedSegmentId, scope, currentUserId, tab, signedSituacaoId],
     queryFn: ({ pageParam = 1 }) => {
       const params: Record<string, string> = { limit: '30', page: String(pageParam) };
       if (unreadOnly) params.unread = 'true';
@@ -522,6 +541,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
         else if (tab === 'pendentes') params.status = 'PENDING';
       }
       if (tab === 'grupos') params.groups = 'only';
+      if (tab === 'assinados' && signedSituacaoId) params.situacaoId = signedSituacaoId;
       if (viewId) {
         return inboxViewsService.getConversations(viewId, params);
       }
@@ -956,8 +976,14 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
       {/* Abas estilo LiderHub (IA / Ativos / Pendentes / Grupos) */}
       <div className="flex items-stretch gap-0.5 overflow-x-auto border-b border-zinc-200/80 px-1.5 pt-1.5 scrollbar-none dark:border-zinc-800">
         {inboxTabs.map((t) => {
+          // Sem a situação cadastrada não há o que listar na aba.
+          if (t.value === 'assinados' && !signedSituacaoId) return null;
           const isActive = tab === t.value;
-          const count = t.status ? statusCounts[t.status] : undefined;
+          const count = t.status
+            ? statusCounts[t.status]
+            : t.value === 'assinados'
+              ? statusCounts[`SITUACAO:${signedSituacaoId}`]
+              : undefined;
           return (
             <button
               key={t.value}
