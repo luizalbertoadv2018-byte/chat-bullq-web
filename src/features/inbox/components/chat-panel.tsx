@@ -26,6 +26,9 @@ import { PendingActionsList } from '../pending-actions/pending-actions-list';
 interface ChatPanelProps {
   conversation: Conversation;
   onConversationUpdate: () => void;
+  /** Vindo da busca por texto: mensagem a mostrar ao abrir. `nonce` muda a
+   *  cada clique, pra repetir o salto na mesma conversa. */
+  jumpRequest?: { messageId: string; nonce: number } | null;
   /** Forwarded to ConversationHeader so the agent-runs sidebar toggle
    *  shows up in the chat header. */
   onToggleAgentLogs?: () => void;
@@ -434,6 +437,7 @@ function ContactAvatar({
 export function ChatPanel({
   conversation,
   onConversationUpdate,
+  jumpRequest,
   onToggleAgentLogs,
   agentLogsOpen,
   onToggleProject,
@@ -777,10 +781,20 @@ export function ChatPanel({
         if (!grew) break;
       }
 
-      toast.info('A mensagem citada não está mais no histórico desta conversa.');
+      toast.info('A mensagem não está mais no histórico desta conversa.');
     },
     [loadMoreHistory],
   );
+
+  // Abertura pela busca por texto: assim que as mensagens carregam, vai até
+  // a mensagem encontrada. O ref evita repetir o salto a cada re-render.
+  const handledJumpRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!jumpRequest || isLoading || messages.length === 0) return;
+    if (handledJumpRef.current === jumpRequest.nonce) return;
+    handledJumpRef.current = jumpRequest.nonce;
+    void jumpToMessage(jumpRequest.messageId);
+  }, [jumpRequest, isLoading, messages.length, jumpToMessage]);
 
   // Reply state — quando setado, próxima msg enviada vai com replyToMessageId
   // e a UI mostra a barra "respondendo a..." acima do input. Reseta ao

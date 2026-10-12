@@ -140,6 +140,37 @@ const filterOptions: { label: string; value: ListFilter; icon: React.ElementType
   },
 ];
 
+/** Minúsculas e sem acento, igual à busca do backend. */
+function normalizeSearch(value: string) {
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Trecho da mensagem encontrada, com o termo buscado em destaque. */
+function SearchSnippet({ text, term }: { text: string; term: string }) {
+  const needle = normalizeSearch(term.trim());
+  const haystack = normalizeSearch(text);
+  // Sem o mesmo comprimento os índices não batem: mostra sem destaque.
+  if (!needle || haystack.length !== text.length) return <>{text}</>;
+  const parts: React.ReactNode[] = [];
+  let from = 0;
+  for (;;) {
+    const at = haystack.indexOf(needle, from);
+    if (at === -1) break;
+    if (at > from) parts.push(text.slice(from, at));
+    parts.push(
+      <mark
+        key={at}
+        className="rounded-sm bg-yellow-200 px-0.5 font-semibold text-zinc-900 dark:bg-yellow-500/40 dark:text-zinc-50"
+      >
+        {text.slice(at, at + needle.length)}
+      </mark>,
+    );
+    from = at + needle.length;
+  }
+  parts.push(text.slice(from));
+  return <>{parts}</>;
+}
+
 interface ConversationListProps {
   activeId: string | null;
   onSelect: (conversation: Conversation) => void;
@@ -1117,7 +1148,8 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
           <input
             ref={searchRef}
             type="text"
-            placeholder="Buscar conversas..."
+            placeholder="Buscar nome ou mensagem..."
+            title="Busca por nome, telefone, protocolo ou por palavras dentro das mensagens"
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full rounded-md border-0 bg-zinc-100/80 py-1.5 pl-8 pr-8 text-[13px] text-zinc-900 outline-none ring-1 ring-transparent transition-all placeholder:text-zinc-400 focus:bg-white focus:ring-primary/30 focus:shadow-sm dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:bg-zinc-900 dark:focus:ring-primary/30"
@@ -1709,7 +1741,7 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
                                     : 'text-zinc-400 dark:text-zinc-500'
                                 }`}
                               >
-                                {formatTime(conv.messages[0]?.createdAt ?? conv.lastMessageAt)}
+                                {formatTime(conv.searchMatch?.createdAt ?? conv.messages[0]?.createdAt ?? conv.lastMessageAt)}
                               </span>
                             </div>
                           </div>
@@ -1721,7 +1753,14 @@ export function ConversationList({ activeId, onSelect, viewId }: ConversationLis
                                   : 'text-zinc-500 dark:text-zinc-400'
                               }`}
                             >
-                              {getLastMessagePreview(conv)}
+                              {conv.searchMatch ? (
+                                <>
+                                  {conv.searchMatch.direction === 'OUTBOUND' ? 'Você: ' : ''}
+                                  <SearchSnippet text={conv.searchMatch.text} term={debouncedSearch} />
+                                </>
+                              ) : (
+                                getLastMessagePreview(conv)
+                              )}
                             </p>
                             {hasUnread && (
                               <span className="ml-1 inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-none text-white">

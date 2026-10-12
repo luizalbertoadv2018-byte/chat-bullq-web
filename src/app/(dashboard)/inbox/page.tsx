@@ -20,6 +20,24 @@ export default function InboxPage() {
   const viewId = searchParams.get('view');
   const deepLinkConvId = searchParams.get('conversationId');
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
+  // Resultado de busca por texto: abrir a conversa já na mensagem encontrada.
+  const [jumpRequest, setJumpRequest] = useState<{
+    conversationId: string;
+    messageId: string;
+    nonce: number;
+  } | null>(null);
+  const handleSelectConversation = useCallback((conv: Conversation) => {
+    setJumpRequest(
+      conv.searchMatch
+        ? {
+            conversationId: conv.id,
+            messageId: conv.searchMatch.messageId,
+            nonce: Date.now(),
+          }
+        : null,
+    );
+    setActiveConversation(conv);
+  }, []);
   // Persisted across sessions via localStorage so each operator keeps their
   // preferred layout (some live with the sidebar open, others want the chat
   // full width). Read on mount, write whenever it flips.
@@ -159,7 +177,7 @@ export default function InboxPage() {
     <div className="flex h-full">
       <ConversationList
         activeId={activeConversation?.id || null}
-        onSelect={setActiveConversation}
+        onSelect={handleSelectConversation}
         viewId={viewId}
       />
 
@@ -169,6 +187,11 @@ export default function InboxPage() {
             key={activeConversation.id}
             conversation={activeConversation}
             onConversationUpdate={handleConversationUpdate}
+            jumpRequest={
+              jumpRequest?.conversationId === activeConversation.id
+                ? jumpRequest
+                : null
+            }
             onToggleAgentLogs={toggleAgentLogs}
             agentLogsOpen={agentLogsOpen}
             onToggleProject={toggleProjectPanel}

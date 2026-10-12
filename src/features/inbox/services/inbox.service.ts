@@ -78,6 +78,13 @@ export interface Conversation {
   _count: { messages: number };
   /** Inbound messages newer than the current user's lastReadAt cursor. */
   unreadCount?: number;
+  /** Só na lista com busca ativa: mensagem da conversa que casou com o termo. */
+  searchMatch?: {
+    messageId: string;
+    text: string;
+    direction: 'INBOUND' | 'OUTBOUND';
+    createdAt: string;
+  } | null;
   /** Projeto do grupo (quando isGroup). null = sem projeto ainda. */
   project?: ProjectSummary | null;
 }
