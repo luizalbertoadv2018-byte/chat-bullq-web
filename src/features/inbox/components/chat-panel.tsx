@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, CheckCheck, Clock, AlertCircle, ExternalLink, Reply, Trash2, X, Ban, Forward, CheckSquare } from 'lucide-react';
+import { Check, CheckCheck, Clock, AlertCircle, ExternalLink, Reply, Trash2, X, Ban, Forward, CheckSquare, SmilePlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { inboxService, type Conversation, type Message } from '../services/inbox.service';
 import { scheduledMessagesService } from '@/features/scheduled-messages/services/scheduled-messages.service';
@@ -841,6 +841,24 @@ export function ChatPanel({
     setSelectedIds(new Set());
   }, [conversation.id]);
 
+  // Reação com emoji numa mensagem. Emoji vazio remove a reação já enviada.
+  // Só WhatsApp — os outros canais não aceitam reação enviada por nós.
+  const canReact = conversation.channel.type.startsWith('WHATSAPP');
+  const handleReact = useCallback(
+    async (msg: Message, emoji: string) => {
+      try {
+        const sent = await inboxService.reactToMessage(msg.id, emoji);
+        if (sent?.id) mergeMessage(sent);
+      } catch (err: any) {
+        const reason = err?.response?.data?.message;
+        toast.error(
+          typeof reason === 'string' ? reason : 'Não foi possível reagir à mensagem.',
+        );
+      }
+    },
+    [mergeMessage],
+  );
+
   const handleSend = async (text: string, mentions?: string[] | 'all') => {
     const replyToMessageId = replyingTo?.id;
     try {
@@ -1012,14 +1030,22 @@ export function ChatPanel({
               </div>
             )}
             {(() => {
-              const reactionMap = new Map<string, string[]>();
+              // Uma reação por autor, como no WhatsApp: reagir de novo troca
+              // a anterior e emoji vazio remove. 'me' = o nosso número.
+              const reactionMap = new Map<string, Map<string, string>>();
               for (const msg of messages) {
-                if (msg.type === 'REACTION' && msg.content?.reaction) {
+                if (msg.type === 'REACTION' && msg.content?.reaction && msg.status !== 'FAILED') {
                   const targetId = msg.content.reaction.targetMessageId;
                   if (targetId) {
-                    const existing = reactionMap.get(targetId) || [];
-                    existing.push(msg.content.reaction.emoji);
-                    reactionMap.set(targetId, existing);
+                    const author =
+                      msg.direction === 'OUTBOUND' ? 'me' : `in:${msg.senderName ?? ''}`;
+                    const byAuthor = reactionMap.get(targetId) || new Map<string, string>();
+                    if (msg.content.reaction.emoji) {
+                      byAuthor.set(author, msg.content.reaction.emoji);
+                    } else {
+                      byAuthor.delete(author);
+                    }
+                    reactionMap.set(targetId, byAuthor);
                   }
                 }
               }
@@ -1028,7 +1054,10 @@ export function ChatPanel({
               return visibleMessages.map((msg) => {
                 const isOutbound = msg.direction === 'OUTBOUND';
                 const StatusIcon = statusIcons[msg.status] || Clock;
-                const reactions = reactionMap.get(msg.externalId || '') || [];
+                const reactionsByAuthor = reactionMap.get(msg.externalId || '');
+                const reactions = reactionsByAuthor ? [...reactionsByAuthor.values()] : [];
+                const myReaction = reactionsByAuthor?.get('me');
+                const showReact = canReact && !!msg.externalId;
                 const isRevoked = !!msg.revokedAt;
                 const isSelected = selectMode && selectedIds.has(msg.id);
                 const msgDate = new Date(msg.createdAt);
@@ -1088,7 +1117,13 @@ export function ChatPanel({
                         Mensagens já revogadas não mostram ações.
                         No modo seleção as ações somem. */}
                     {isOutbound && !isRevoked && !selectMode && (
-                      <div className="flex items-center gap-1 self-center opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="flex items-center gap-1 self-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                        {showReact && (
+                          <ReactionButton
+                            current={myReaction}
+                            onReact={(emoji) => handleReact(msg, emoji)}
+                          />
+                        )}
                         <button
                           type="button"
                           onClick={() => startReply(msg)}
@@ -1349,7 +1384,13 @@ export function ChatPanel({
                       )}
                     </div>
                     {!isOutbound && !isRevoked && !selectMode && (
-                      <div className="flex items-center gap-1 self-center opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="flex items-center gap-1 self-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                        {showReact && (
+                          <ReactionButton
+                            current={myReaction}
+                            onReact={(emoji) => handleReact(msg, emoji)}
+                          />
+                        )}
                         <button
                           type="button"
                           onClick={() => startReply(msg)}
@@ -1457,6 +1498,75 @@ export function ChatPanel({
           exitSelect();
         }}
       />
+    </div>
+  );
+}
+
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+/**
+ * Botão "Reagir" das ações de hover da bolha. Abre a fileira de emojis
+ * rápidos do WhatsApp; clicar no emoji já escolhido remove a reação.
+ */
+function ReactionButton({
+  current,
+  onReact,
+}: {
+  current?: string;
+  onReact: (emoji: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="rounded-full bg-white p-1.5 text-zinc-400 shadow-sm ring-1 ring-zinc-200 hover:text-zinc-700 dark:bg-zinc-800 dark:ring-zinc-700 dark:hover:text-zinc-100"
+        title="Reagir"
+        aria-label="Reagir a esta mensagem"
+        aria-expanded={open}
+      >
+        <SmilePlus className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-1/2 z-20 mb-1 flex -translate-x-1/2 gap-0.5 rounded-full bg-white px-1.5 py-1 shadow-lg ring-1 ring-zinc-200 dark:bg-zinc-800 dark:ring-zinc-700">
+          {QUICK_REACTIONS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => {
+                onReact(emoji === current ? '' : emoji);
+                setOpen(false);
+              }}
+              className={`rounded-full px-1 text-lg leading-7 transition-transform hover:scale-125 ${
+                emoji === current ? 'bg-zinc-200 dark:bg-zinc-600' : ''
+              }`}
+              title={emoji === current ? 'Remover reação' : `Reagir com ${emoji}`}
+              aria-label={emoji === current ? 'Remover reação' : `Reagir com ${emoji}`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

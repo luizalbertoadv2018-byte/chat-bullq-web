@@ -264,6 +264,15 @@ export const inboxService = {
   },
 
   /**
+   * Reage a uma mensagem com um emoji (WhatsApp). Emoji vazio remove a
+   * reação. Devolve a Message REACTION criada.
+   */
+  async reactToMessage(messageId: string, emoji: string): Promise<Message> {
+    const { data } = await api.post(`/messages/${messageId}/react`, { emoji });
+    return data.data ?? data;
+  },
+
+  /**
    * Deleta mensagem pra todos. Tenta propagar pro provider. Resposta indica
    * se o provider aceitou (cliente final viu sumir) ou se foi só local.
    */
