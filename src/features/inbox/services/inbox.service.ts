@@ -70,6 +70,17 @@ export interface Conversation {
   aiDisabledBy?: string | null;
   aiDisabledAt?: string | null;
   activeAgentId?: string | null;
+  /** Dados auxiliares da conversa; `followUp` guarda o estado da retomada automática. */
+  metadata?: {
+    followUp?: {
+      attempts?: number;
+      nextAt?: string | null;
+      lastSentAt?: string | null;
+      stopReason?: string | null;
+      paused?: boolean;
+    };
+    [key: string]: any;
+  } | null;
   contact: Contact;
   channel: ChannelInfo;
   assignedTo: AgentInfo | null;
@@ -473,6 +484,11 @@ export const inboxService = {
     patch: { name?: string; cpf?: string; metadata?: Record<string, any> },
   ): Promise<void> {
     await api.patch(`/contacts/${contactId}`, patch);
+  },
+
+  /** Pausa ou retoma o follow-up automático da IA nesta conversa. */
+  async setFollowUpPaused(conversationId: string, paused: boolean): Promise<void> {
+    await api.patch(`/follow-up/conversations/${conversationId}`, { paused });
   },
 
   /** Sobe o contato pro Tramitação manualmente (cliente presencial). */

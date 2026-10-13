@@ -115,6 +115,28 @@ export function ConversationPropertiesPanel({
       () => inboxService.assignTo(conversation.id, value || null),
       value ? 'Responsável atualizado' : 'Atribuição removida',
     );
+  // Retomada automática da IA quando o contato para de responder.
+  const followUp = conversation.metadata?.followUp;
+  const followUpLabel = (() => {
+    if (!followUp) return null;
+    if (followUp.paused) return 'Pausado';
+    const sent = followUp.attempts ?? 0;
+    const sentText = sent > 0 ? `${sent} ${sent === 1 ? 'enviado' : 'enviados'}` : '';
+    if (followUp.stopReason === 'exhausted') return `Encerrado sem retorno (${sentText || 'sem envio'})`;
+    if (!followUp.nextAt) return null;
+    const when = new Date(followUp.nextAt).toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return [sentText, `próximo em ${when}`].filter(Boolean).join(' · ');
+  })();
+  const toggleFollowUp = () =>
+    run(
+      () => inboxService.setFollowUpPaused(conversation.id, !followUp?.paused),
+      followUp?.paused ? 'Follow-up retomado' : 'Follow-up pausado',
+    );
   const setDepartment = (value: string) =>
     run(
       () => inboxService.updateConversation(conversation.id, { departmentId: value || null }),
@@ -271,6 +293,30 @@ export function ConversationPropertiesPanel({
             ))}
           </select>
         </Row>
+        {followUpLabel && (
+          <Row icon={<RefreshCw className="h-4 w-4" />} label="Follow-up">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs leading-snug text-zinc-600 dark:text-zinc-300">
+                {followUpLabel}
+              </span>
+              {followUp?.stopReason !== 'exhausted' && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={toggleFollowUp}
+                  title={
+                    followUp?.paused
+                      ? 'A IA volta a retomar este contato se ele parar de responder'
+                      : 'A IA não vai mais retomar este contato sozinha'
+                  }
+                  className="shrink-0 rounded-md border border-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-600 hover:border-primary hover:text-primary disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
+                >
+                  {followUp?.paused ? 'Retomar' : 'Pausar'}
+                </button>
+              )}
+            </div>
+          </Row>
+        )}
       </Section>
 
       {/* Propriedades */}
