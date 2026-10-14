@@ -8,8 +8,7 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Chat BullQ',
   description: 'Omnichannel customer service platform',
-  // Ícones servidos de /public e declarados aqui: os arquivos de ícone dentro
-  // de src/app não eram servidos no build standalone (404, aba sem ícone).
+  // Marca do escritório (dourado sobre azul-marinho); arquivos em /public.
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
