@@ -21,6 +21,7 @@ import {
 import { ConversationAiToggle } from './conversation-ai-toggle';
 import { AssignmentPopover } from './assignment-popover';
 import { AgentPinPopover } from './agent-pin-popover';
+import { ContractPopover } from './contract-popover';
 import { PipelinePopover } from './pipeline-popover';
 import { inboxService, type Conversation } from '../services/inbox.service';
 
@@ -184,6 +185,9 @@ export function ConversationHeader({
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-1.5">
+        {!conversation.isGroup && (
+          <ContractPopover conversation={conversation} onChanged={onUpdate} />
+        )}
         <AgentPinPopover conversation={conversation} onChanged={onUpdate} />
         <ConversationAiToggle
           conversation={conversation}

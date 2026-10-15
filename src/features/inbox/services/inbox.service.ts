@@ -390,6 +390,27 @@ export const inboxService = {
     return data.data ?? data;
   },
 
+  async listContractTemplates(
+    conversationId: string,
+  ): Promise<Array<{ token: string; name: string }>> {
+    const { data } = await api.get(
+      `/conversations/${conversationId}/ai/contract-templates`,
+    );
+    return data.data ?? data;
+  },
+
+  async startContract(
+    conversationId: string,
+    agentId: string,
+    templateId: string,
+  ): Promise<{ engaged: boolean; reason?: string; agentName?: string }> {
+    const { data } = await api.post(
+      `/conversations/${conversationId}/ai/start-contract`,
+      { agentId, templateId },
+    );
+    return data.data ?? data;
+  },
+
   async bulkClose(ids: string[]): Promise<void> {
     await Promise.allSettled(ids.map((id) => api.post(`/conversations/${id}/close`)));
   },
