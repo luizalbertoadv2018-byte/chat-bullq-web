@@ -404,6 +404,13 @@ export const CURATED_MODELS = [
     badge: 'Tarefas simples · mais barato',
     recommendedFor: 'orchestrator',
   },
+  {
+    // Vai direto pra Anthropic (llm.service, modelId `claude-*`).
+    id: 'claude-haiku-5-5',
+    label: 'Claude Haiku 5.5',
+    badge: 'Conversas · rápido e barato',
+    recommendedFor: 'worker',
+  },
 ] as const;
 
 export function formatModelLabel(modelId: string): string {
