@@ -16,6 +16,10 @@ const SUGGESTIONS = [
   'Análise',
   'Qualificado',
   'Desqualificado',
+  'Protocolado Judicial',
+  'Protocolado Adm',
+  'Financeiro',
+  'Arquivamento',
 ];
 
 export default function SettingsSituacoesPage() {
